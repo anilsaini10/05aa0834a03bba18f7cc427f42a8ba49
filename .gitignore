@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Firebase service account keys — never commit these
+*firebase-adminsdk*.json
+*-firebase-*.json
+firebase-service-account.json
+ariseapp-*.json

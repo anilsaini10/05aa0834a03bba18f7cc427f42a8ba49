@@ -1,0 +1,215 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────────
+enum Role {
+  ADMIN
+  TEACHER
+  PARENT
+}
+
+enum Platform {
+  ANDROID
+  IOS
+  WEB
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// ── User ──────────────────────────────────────────────────────
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  phone         String?        @unique
+  passwordHash  String
+  role          Role
+  schoolId      String
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  school           School         @relation(fields: [schoolId], references: [id])
+  refreshTokens    RefreshToken[]
+  deviceTokens     DeviceToken[]
+  parentOfStudents Student[]
+  teacherProfile   Teacher?
+
+  @@index([schoolId])
+  @@map("users")
+}
+
+// ── School ────────────────────────────────────────────────────
+model School {
+  id        String    @id @default(uuid())
+  name      String
+  city      String?
+  createdAt DateTime  @default(now())
+
+  users     User[]
+  classes   Class[]
+  subjects  Subject[]
+  students  Student[]
+  teachers  Teacher[]
+
+  @@map("schools")
+}
+
+// ── RefreshToken ───────────────────────────────────────────────
+model RefreshToken {
+  id         String   @id @default(uuid())
+  userId     String
+  token      String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ── DeviceToken ────────────────────────────────────────────────
+model DeviceToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  platform  Platform?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
+}
+
+// ── Class ─────────────────────────────────────────────────────
+model Class {
+  id              String           @id @default(uuid())
+  name            String
+  numericLevel    Int
+  schoolId        String
+  school          School           @relation(fields: [schoolId], references: [id])
+  sections        Section[]
+  students        Student[]
+  subjects        ClassSubject[]
+  teacherSubjects TeacherSubject[]
+  createdAt       DateTime         @default(now())
+
+  @@unique([schoolId, name])
+  @@map("classes")
+}
+
+// ── Section ───────────────────────────────────────────────────
+model Section {
+  id             String    @id @default(uuid())
+  name           String
+  classId        String
+  class          Class     @relation(fields: [classId], references: [id])
+  capacity       Int
+  classTeacherId String?
+  classTeacher   Teacher?  @relation(fields: [classTeacherId], references: [id])
+  students       Student[]
+
+  @@unique([classId, name])
+  @@map("sections")
+}
+
+// ── Subject ───────────────────────────────────────────────────
+model Subject {
+  id       String           @id @default(uuid())
+  name     String
+  schoolId String
+  school   School           @relation(fields: [schoolId], references: [id])
+  teachers TeacherSubject[]
+  classes  ClassSubject[]
+
+  @@unique([schoolId, name])
+  @@map("subjects")
+}
+
+// ── ClassSubject ──────────────────────────────────────────────
+// Curriculum link: which subjects are taught in which class.
+model ClassSubject {
+  classId   String
+  subjectId String
+  class     Class   @relation(fields: [classId], references: [id])
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  @@id([classId, subjectId])
+  @@map("class_subjects")
+}
+
+// ── Student ───────────────────────────────────────────────────
+model Student {
+  id                   String   @id @default(uuid())
+  admissionNo          String
+  name                 String
+  gender               Gender
+  dateOfBirth          DateTime
+  classId              String
+  class                Class    @relation(fields: [classId], references: [id])
+  sectionId            String
+  section              Section  @relation(fields: [sectionId], references: [id])
+  rollNo               Int
+  parentUserId         String
+  parentUser           User     @relation(fields: [parentUserId], references: [id])
+  parentName           String
+  parentPhone          String
+  parentEmail          String
+  bloodGroup           String?
+  address              String?
+  status               String   @default("ACTIVE")
+  attendancePercentage Float    @default(100)
+  schoolId             String
+  school               School   @relation(fields: [schoolId], references: [id])
+  createdAt            DateTime @default(now())
+
+  @@index([schoolId])
+  @@map("students")
+}
+
+// ── Teacher ───────────────────────────────────────────────────
+model Teacher {
+  id                String           @id @default(uuid())
+  employeeId        String
+  userId            String           @unique
+  user              User             @relation(fields: [userId], references: [id])
+  gender            Gender
+  joiningDate       DateTime
+  salary            Float
+  status            String           @default("ACTIVE")
+  performanceScore  Float            @default(0)
+  schoolId          String
+  school            School           @relation(fields: [schoolId], references: [id])
+  subjects          TeacherSubject[]
+  sectionsAsTeacher Section[]
+
+  @@index([schoolId])
+  @@map("teachers")
+}
+
+// ── TeacherSubject ────────────────────────────────────────────
+// Which teacher teaches which subject, in which class.
+model TeacherSubject {
+  teacherId String
+  subjectId String
+  classId   String
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  class     Class   @relation(fields: [classId], references: [id])
+
+  @@id([teacherId, subjectId, classId])
+  @@map("teacher_subjects")
+}

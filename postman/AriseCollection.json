@@ -1,0 +1,616 @@
+{
+  "info": {
+    "name": "Arise App API",
+    "description": "Auth (signup/login/refresh/logout/me), School directory search, Push Notifications, and Admin academic management (classes, subjects, students, teachers).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{accessToken}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "schoolId", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "deviceToken", "value": "sample-fcm-device-token-123", "type": "string" },
+    { "key": "classId", "value": "", "type": "string" },
+    { "key": "sectionId", "value": "", "type": "string" },
+    { "key": "subjectId", "value": "", "type": "string" },
+    { "key": "parentEmail", "value": "suresh.verma@example.com", "type": "string" },
+    { "key": "teacherEmail", "value": "priya.singh@example.com", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup (ADMIN + creates School)",
+          "auth": { "type": "noauth" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.data.tokens.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.data.tokens.refreshToken);",
+                  "  pm.collectionVariables.set('schoolId', body.data.user.schoolId);",
+                  "  pm.collectionVariables.set('userId', body.data.user.id);",
+                  "  pm.test('Signup succeeded', () => pm.expect(body.success).to.be.true);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schoolName\": \"Green Valley School\",\n  \"name\": \"Rita Sharma\",\n  \"email\": \"rita@greenvalley.com\",\n  \"phone\": \"9998887771\",\n  \"password\": \"pass1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "signup"]
+            },
+            "description": "Creates a new School and its ADMIN user in one transaction. Fails with 409 EMAIL_TAKEN if email already exists. Saves accessToken, refreshToken, schoolId, userId to collection variables."
+          }
+        },
+        {
+          "name": "Signup - Duplicate Email (expect 409)",
+          "auth": { "type": "noauth" },
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schoolName\": \"Another School\",\n  \"name\": \"Someone Else\",\n  \"email\": \"rita@greenvalley.com\",\n  \"phone\": \"9998887772\",\n  \"password\": \"pass1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "signup"]
+            }
+          }
+        },
+        {
+          "name": "Login - ADMIN",
+          "auth": { "type": "noauth" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.data.tokens.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.data.tokens.refreshToken);",
+                  "  pm.collectionVariables.set('schoolId', body.data.user.schoolId);",
+                  "  pm.collectionVariables.set('userId', body.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"rita@greenvalley.com\",\n  \"password\": \"pass1234\",\n  \"role\": \"ADMIN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "identifier can be email or phone. schoolId is ignored/not required for ADMIN."
+          }
+        },
+        {
+          "name": "Login - TEACHER (school-scoped)",
+          "auth": { "type": "noauth" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.data.tokens.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.data.tokens.refreshToken);",
+                  "  pm.collectionVariables.set('userId', body.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"teacher@example.com\",\n  \"password\": \"teacherpass1\",\n  \"role\": \"TEACHER\",\n  \"schoolId\": \"{{schoolId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "schoolId is REQUIRED for TEACHER/PARENT roles — get it from GET /api/schools. Returns 400 SCHOOL_ID_REQUIRED if missing, 401 INVALID_CREDENTIALS if identifier/role/schoolId don't match together."
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "auth": { "type": "noauth" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "description": "Returns a new accessToken. Fails with 401 INVALID_REFRESH_TOKEN if expired/revoked."
+          }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Requires Authorization: Bearer <accessToken> (inherited from collection auth). Returns the decoded JWT payload (sub, email, role, schoolId)."
+          }
+        },
+        {
+          "name": "Logout",
+          "auth": { "type": "noauth" },
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "description": "Revokes the given refresh token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Schools",
+      "item": [
+        {
+          "name": "List Schools (no filter)",
+          "auth": { "type": "noauth" },
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/schools",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "schools"]
+            },
+            "description": "Public, no auth required. Returns up to 20 schools, sorted by name."
+          }
+        },
+        {
+          "name": "Search Schools",
+          "auth": { "type": "noauth" },
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/schools?search=delhi",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "schools"],
+              "query": [{ "key": "search", "value": "delhi" }]
+            },
+            "description": "Case-insensitive partial match on school name. Public, no auth required."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Register Device Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{deviceToken}}\",\n  \"platform\": \"ANDROID\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications", "register"]
+            },
+            "description": "Requires Authorization header (inherited). platform is optional: ANDROID | IOS | WEB. Upserts the token for the logged-in user."
+          }
+        },
+        {
+          "name": "Unregister Device Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{deviceToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/unregister",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications", "unregister"]
+            },
+            "description": "Requires Authorization header (inherited). Call on logout/app uninstall."
+          }
+        },
+        {
+          "name": "Send Notification (ADMIN only)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"title\": \"Hello!\",\n  \"body\": \"This is a test push notification\",\n  \"data\": { \"screen\": \"home\" }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications", "send"]
+            },
+            "description": "Requires Authorization header (inherited) AND role=ADMIN (403 otherwise). Fails 503 FIREBASE_NOT_CONFIGURED if the server's Firebase service account key isn't set up."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Classes",
+      "item": [
+        {
+          "name": "Create Class (with sections)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('classId', body.data.id);",
+                  "  if (body.data.sections[0]) pm.collectionVariables.set('sectionId', body.data.sections[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Class 5\",\n  \"numericLevel\": 5,\n  \"sections\": [\n    { \"name\": \"A\", \"capacity\": 40 },\n    { \"name\": \"B\", \"capacity\": 35 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "classes"]
+            },
+            "description": "Requires ADMIN. Creates a Class with its initial Sections in one transaction. Fails 409 CLASS_NAME_TAKEN if (schoolId, name) already exists, 409 SECTION_NAME_TAKEN if two sections in the request share a name. Saves classId/sectionId to collection variables."
+          }
+        },
+        {
+          "name": "Create Class - Duplicate Name (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Class 5\",\n  \"numericLevel\": 5,\n  \"sections\": [{ \"name\": \"C\", \"capacity\": 30 }]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "classes"]
+            }
+          }
+        },
+        {
+          "name": "Add Section to Class",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"C\",\n  \"capacity\": 30\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/classes/{{classId}}/sections",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "classes", "{{classId}}", "sections"]
+            },
+            "description": "Requires ADMIN. Adds a new Section to an existing class. 404 CLASS_NOT_FOUND if classId doesn't belong to this school, 409 SECTION_NAME_TAKEN if the name is already used in this class."
+          }
+        },
+        {
+          "name": "Link Subject to Class",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subjectId\": \"{{subjectId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/classes/{{classId}}/subjects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "classes", "{{classId}}", "subjects"]
+            },
+            "description": "Requires ADMIN. Idempotent — links an existing Subject to this Class's curriculum (no error if already linked). 404 CLASS_NOT_FOUND / SUBJECT_NOT_FOUND otherwise."
+          }
+        },
+        {
+          "name": "List Classes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "classes"]
+            },
+            "description": "Requires ADMIN. Returns all classes for the admin's school — each with its sections (+ computed student counts) and the subjects taught in it (via ClassSubject)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subjects",
+      "item": [
+        {
+          "name": "Create Subject",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('subjectId', body.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Science\",\n  \"classIds\": [\"{{classId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subjects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subjects"]
+            },
+            "description": "Requires ADMIN. classIds is optional — if given, immediately links the new subject to those classes (404 CLASS_NOT_FOUND if any don't belong to this school). Fails 409 SUBJECT_ALREADY_EXISTS if (schoolId, name) already exists. Saves subjectId to collection variables."
+          }
+        },
+        {
+          "name": "Create Subject - Duplicate Name (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Science\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subjects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subjects"]
+            }
+          }
+        },
+        {
+          "name": "List Subjects",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/subjects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subjects"]
+            },
+            "description": "Requires ADMIN. Returns all subjects for the admin's school, each with the classes it's taught in. Subjects are also created implicitly the first time a teacher is added with a new subject name."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Students",
+      "item": [
+        {
+          "name": "Create Student (new parent account)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Aarav Verma\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"2015-04-10\",\n  \"classId\": \"{{classId}}\",\n  \"sectionId\": \"{{sectionId}}\",\n  \"rollNo\": 1,\n  \"parentName\": \"Suresh Verma\",\n  \"parentPhone\": \"9812345670\",\n  \"parentEmail\": \"{{parentEmail}}\",\n  \"bloodGroup\": \"O+\",\n  \"address\": \"123 MG Road\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/students",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "students"]
+            },
+            "description": "Requires ADMIN. classId/sectionId must belong to this school (404 CLASS_NOT_FOUND / SECTION_NOT_FOUND otherwise). If parentEmail is new, creates a PARENT user and returns a one-time plaintext defaultPassword — capitalized local-part of the email + '@12345'."
+          }
+        },
+        {
+          "name": "Create Student (sibling — reuses parent account)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Diya Verma\",\n  \"gender\": \"FEMALE\",\n  \"dateOfBirth\": \"2017-08-22\",\n  \"classId\": \"{{classId}}\",\n  \"sectionId\": \"{{sectionId}}\",\n  \"rollNo\": 2,\n  \"parentName\": \"Suresh Verma\",\n  \"parentPhone\": \"9812345670\",\n  \"parentEmail\": \"{{parentEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/students",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "students"]
+            },
+            "description": "Same parentEmail as the previous request — the existing PARENT user is reused. Response's parentAccount.isNew will be false and defaultPassword will be omitted."
+          }
+        },
+        {
+          "name": "Create Student - Invalid Class (expect 404)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Student\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"2015-04-10\",\n  \"classId\": \"00000000-0000-0000-0000-000000000000\",\n  \"sectionId\": \"{{sectionId}}\",\n  \"rollNo\": 99,\n  \"parentName\": \"Nobody\",\n  \"parentPhone\": \"9000000000\",\n  \"parentEmail\": \"nobody@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/students",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "students"]
+            },
+            "description": "classId doesn't exist / doesn't belong to this school -> 404 CLASS_NOT_FOUND."
+          }
+        },
+        {
+          "name": "List Students",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/students?page=1&pageSize=15&search=verma",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "students"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "search", "value": "verma" },
+                { "key": "classId", "value": "{{classId}}", "disabled": true },
+                { "key": "sectionId", "value": "{{sectionId}}", "disabled": true }
+              ]
+            },
+            "description": "Requires ADMIN. search matches name/admissionNo/parentName. Enable the classId/sectionId query params to filter further."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Teachers",
+      "item": [
+        {
+          "name": "Create Teacher",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Priya Singh\",\n  \"email\": \"{{teacherEmail}}\",\n  \"phone\": \"9123456780\",\n  \"gender\": \"FEMALE\",\n  \"subject\": \"Mathematics\",\n  \"classId\": \"{{classId}}\",\n  \"salary\": 45000,\n  \"joiningDate\": \"2024-06-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/teachers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "teachers"]
+            },
+            "description": "Requires ADMIN. classId says which class this teacher teaches `subject` in — 404 CLASS_NOT_FOUND if it doesn't belong to this school. Creates a TEACHER user (password = generateDefaultPassword(email), returned once as plaintext defaultPassword), a Teacher profile, upserts the Subject by (schoolId, name), links it into the class's curriculum (ClassSubject) if not already, and records the teacher-subject-class assignment. Fails 409 EMAIL_TAKEN if the email belongs to any user at this school."
+          }
+        },
+        {
+          "name": "Create Teacher - Duplicate Email (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Another Teacher\",\n  \"email\": \"{{teacherEmail}}\",\n  \"phone\": \"9123456781\",\n  \"gender\": \"MALE\",\n  \"subject\": \"Science\",\n  \"classId\": \"{{classId}}\",\n  \"salary\": 40000,\n  \"joiningDate\": \"2024-01-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/teachers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "teachers"]
+            }
+          }
+        },
+        {
+          "name": "Create Teacher - Invalid Class (expect 404)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Teacher\",\n  \"email\": \"bad.teacher@example.com\",\n  \"phone\": \"9123456799\",\n  \"gender\": \"MALE\",\n  \"subject\": \"Art\",\n  \"classId\": \"00000000-0000-0000-0000-000000000000\",\n  \"salary\": 30000,\n  \"joiningDate\": \"2024-01-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/teachers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "teachers"]
+            }
+          }
+        },
+        {
+          "name": "List Teachers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/teachers?page=1&pageSize=15&subject=Mathematics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "teachers"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "subject", "value": "Mathematics" },
+                { "key": "classId", "value": "{{classId}}", "disabled": true },
+                { "key": "search", "value": "priya", "disabled": true }
+              ]
+            },
+            "description": "Requires ADMIN. search matches name/employeeId/email. subject filters by exact subject name, classId filters to teachers assigned to that class."
+          }
+        }
+      ]
+    }
+  ]
+}

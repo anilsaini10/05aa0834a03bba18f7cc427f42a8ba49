@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 6 npx ts-node-dev --respawn --transpile-only src/server.ts)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s http://localhost:5000/api/schools)",
+      "Bash(curl -s \"http://localhost:5000/api/schools?search=delhi\")",
+      "Bash(curl -s \"http://localhost:5000/api/schools?search=zzz\")",
+      "Bash(curl -s -X POST http://localhost:5000/api/auth/signup -H 'Content-Type: application/json' -d '{\"schoolName\":\"Green Valley School\",\"name\":\"Rita Sharma\",\"email\":\"rita@greenvalley.com\",\"phone\":\"9998887771\",\"password\":\"pass1234\"}')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s -o /tmp/e1.json -w 'HTTP %{http_code}\\\\n' -X POST http://localhost:5000/api/auth/signup -H 'Content-Type: application/json' -d '{\"schoolName\":\"X\",\"name\":\"Y Z\",\"email\":\"yz@x.com\",\"password\":\"pass1234\"}')",
+      "Read(//tmp/**)",
+      "Bash(lsof -ti:5000)",
+      "Bash(xargs kill -9)",
+      "Bash(sleep 3 *)",
+      "Read(//private/tmp/**)",
+      "Bash(python3 -m json.tool /Users/user/Desktop/Office/App/AriseFolder/arise_backend/postman/Arise-Auth.postman_collection.json)"
+    ]
+  }
+}
