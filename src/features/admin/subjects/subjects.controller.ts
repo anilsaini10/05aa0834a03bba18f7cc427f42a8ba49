@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as subjectsService from './subjects.service';
 import { createSubjectSchema } from './subjects.validation';
-import { sendSuccess } from '../../shared/utils/apiResponse';
+import { sendSuccess } from '../../../shared/utils/apiResponse';
 
 // ── GET /subjects ─────────────────────────────────────────────
 export const listHandler = async (

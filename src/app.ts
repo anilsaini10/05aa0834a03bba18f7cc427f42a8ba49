@@ -6,10 +6,12 @@ import { env } from './config/env';
 import authRoutes          from './features/auth/auth.routes';
 import notificationRoutes  from './features/notifications/notifications.routes';
 import schoolRoutes        from './features/schools/schools.routes';
-import classRoutes         from './features/classes/classes.routes';
-import subjectRoutes       from './features/subjects/subjects.routes';
-import studentRoutes       from './features/students/students.routes';
-import teacherRoutes       from './features/teachers/teachers.routes';
+import classRoutes         from './features/admin/classes/classes.routes';
+import subjectRoutes       from './features/admin/subjects/subjects.routes';
+import studentRoutes       from './features/admin/students/students.routes';
+import teacherRoutes       from './features/admin/teachers/teachers.routes';
+import teacherSelfRoutes   from './features/teacher/teacher.routes';
+import studentSelfRoutes   from './features/students/students.routes';
 
 // ── Middleware ────────────────────────────────────────────────
 import { errorHandler } from './middleware/errorHandler';
@@ -46,6 +48,8 @@ app.use('/api/classes', classRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin/teachers', teacherRoutes);
+app.use('/api/teacher', teacherSelfRoutes);
+app.use('/api/students', studentSelfRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

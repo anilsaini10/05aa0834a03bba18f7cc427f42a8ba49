@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as classesService from './classes.service';
 import { createClassSchema, addSectionSchema, addClassSubjectSchema } from './classes.validation';
-import { sendSuccess } from '../../shared/utils/apiResponse';
+import { sendSuccess } from '../../../shared/utils/apiResponse';
 
 // ── GET /classes ──────────────────────────────────────────────
 export const listHandler = async (

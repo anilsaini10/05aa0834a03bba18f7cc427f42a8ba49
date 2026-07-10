@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as teachersService from './teachers.service';
 import { createTeacherSchema, listTeachersQuerySchema } from './teachers.validation';
-import { sendSuccess } from '../../shared/utils/apiResponse';
+import { sendSuccess } from '../../../shared/utils/apiResponse';
 
 // ── POST /admin/teachers ──────────────────────────────────────
 export const createHandler = async (

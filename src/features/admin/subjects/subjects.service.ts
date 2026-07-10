@@ -1,4 +1,4 @@
-import { prisma } from '../../config/db';
+import { prisma } from '../../../config/db';
 import { CreateSubjectSchema } from './subjects.validation';
 
 export interface ClassRef {

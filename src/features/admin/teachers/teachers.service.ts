@@ -1,7 +1,7 @@
 import { Prisma, Teacher, User, TeacherSubject, Subject, Class } from '@prisma/client';
-import { prisma } from '../../config/db';
-import { hashPassword } from '../../shared/utils/hash';
-import { generateDefaultPassword } from '../../shared/utils/defaultPassword';
+import { prisma } from '../../../config/db';
+import { hashPassword } from '../../../shared/utils/hash';
+import { generateDefaultPassword } from '../../../shared/utils/defaultPassword';
 import { CreateTeacherSchema, ListTeachersQuerySchema } from './teachers.validation';
 
 type TeacherWithRefs = Teacher & {

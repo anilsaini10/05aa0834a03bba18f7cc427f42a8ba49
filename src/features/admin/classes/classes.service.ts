@@ -1,4 +1,4 @@
-import { prisma } from '../../config/db';
+import { prisma } from '../../../config/db';
 import { CreateClassSchema, AddSectionSchema } from './classes.validation';
 
 export interface SectionListItem {

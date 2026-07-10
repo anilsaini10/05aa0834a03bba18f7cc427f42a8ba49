@@ -150,6 +150,40 @@
           }
         },
         {
+          "name": "Login - PARENT (school-scoped)",
+          "auth": { "type": "noauth" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.data.tokens.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.data.tokens.refreshToken);",
+                  "  pm.collectionVariables.set('userId', body.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{parentEmail}}\",\n  \"password\": \"Suresh.verma@12345\",\n  \"role\": \"PARENT\",\n  \"schoolId\": \"{{schoolId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Same school-scoped rules as TEACHER login. Password here is the auto-generated default (capitalized email local-part + '@12345') returned once when the admin created this student's parent account."
+          }
+        },
+        {
           "name": "Refresh Token",
           "auth": { "type": "noauth" },
           "event": [
@@ -608,6 +642,139 @@
               ]
             },
             "description": "Requires ADMIN. search matches name/employeeId/email. subject filters by exact subject name, classId filters to teachers assigned to that class."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Teacher (Self-Service)",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "profile"]
+            },
+            "description": "Requires TEACHER role (log in via Auth > Login - TEACHER first). Returns this teacher's own profile, including every subject+class they're assigned to."
+          }
+        },
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "profile"]
+            },
+            "description": "Requires TEACHER. Only name/phone are self-editable — at least one must be present. Email/subjects/salary/status are admin-managed only."
+          }
+        },
+        {
+          "name": "Reset My Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Priya.singh@12345\",\n  \"newPassword\": \"NewPass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "reset-password"]
+            },
+            "description": "Requires TEACHER. 400 INVALID_CURRENT_PASSWORD if currentPassword is wrong. On success, ALL of this user's refresh tokens are revoked (including {{refreshToken}} above) — you must log in again afterward to get a fresh session. Use this to change the one-time defaultPassword the admin generated."
+          }
+        },
+        {
+          "name": "List My Classes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "classes"]
+            },
+            "description": "Requires TEACHER. Returns ONLY the classes this teacher is actually assigned to (via TeacherSubject) — never the whole school's class list like the admin endpoint. Each class's `mySubjects` shows only this teacher's own subjects in it (not the full curriculum)."
+          }
+        },
+        {
+          "name": "List My Students",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/students?classId={{classId}}&page=1&pageSize=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "students"],
+              "query": [
+                { "key": "classId", "value": "{{classId}}" },
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "sectionId", "value": "{{sectionId}}", "disabled": true },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Requires TEACHER. classId is REQUIRED and must be one of this teacher's own classes (from List My Classes) — otherwise 403 CLASS_NOT_ASSIGNED. Never trust a client-supplied classId for a class this teacher doesn't actually teach."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Student/Parent (Self-Service)",
+      "item": [
+        {
+          "name": "Get My Profile (+ my children)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/students/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "students", "profile"]
+            },
+            "description": "Requires PARENT role (log in via Auth > Login - PARENT first). Returns the parent's own profile plus every child (Student) linked to them — a parent can have multiple children."
+          }
+        },
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9812345670\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/students/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "students", "profile"]
+            },
+            "description": "Requires PARENT. Only the parent's own name/phone are self-editable — at least one must be present. The child's student record (class, roll no, attendance...) is admin/teacher-managed, not editable here."
+          }
+        },
+        {
+          "name": "Reset My Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Suresh.verma@12345\",\n  \"newPassword\": \"NewPass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/students/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "students", "reset-password"]
+            },
+            "description": "Requires PARENT. 400 INVALID_CURRENT_PASSWORD if currentPassword is wrong. On success, ALL of this user's refresh tokens are revoked — log in again afterward. Use this to change the one-time defaultPassword the admin generated when this student was added."
           }
         }
       ]

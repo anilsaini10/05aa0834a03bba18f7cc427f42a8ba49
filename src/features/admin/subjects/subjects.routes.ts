@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { listHandler, createHandler } from './subjects.controller';
-import { authGuard } from '../../middleware/authGuard';
-import { roleGuard } from '../../middleware/roleGuard';
+import { authGuard } from '../../../middleware/authGuard';
+import { roleGuard } from '../../../middleware/roleGuard';
 
 const router = Router();
 

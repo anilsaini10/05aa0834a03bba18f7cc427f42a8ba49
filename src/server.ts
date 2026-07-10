@@ -36,6 +36,14 @@ const startServer = async (): Promise<void> => {
     console.log('  GET  /api/admin/students');
     console.log('  POST /api/admin/teachers');
     console.log('  GET  /api/admin/teachers');
+    console.log('  GET  /api/teacher/profile');
+    console.log('  PATCH /api/teacher/profile');
+    console.log('  POST /api/teacher/reset-password');
+    console.log('  GET  /api/teacher/classes');
+    console.log('  GET  /api/teacher/students');
+    console.log('  GET  /api/students/profile');
+    console.log('  PATCH /api/students/profile');
+    console.log('  POST /api/students/reset-password');
     console.log('');
   });
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { createHandler, listHandler } from './teachers.controller';
-import { authGuard } from '../../middleware/authGuard';
-import { roleGuard } from '../../middleware/roleGuard';
+import { createHandler, listHandler } from './students.controller';
+import { authGuard } from '../../../middleware/authGuard';
+import { roleGuard } from '../../../middleware/roleGuard';
 
 const router = Router();
 

@@ -5,8 +5,8 @@ import {
   addSectionHandler,
   addSubjectHandler,
 } from './classes.controller';
-import { authGuard } from '../../middleware/authGuard';
-import { roleGuard } from '../../middleware/roleGuard';
+import { authGuard } from '../../../middleware/authGuard';
+import { roleGuard } from '../../../middleware/roleGuard';
 
 const router = Router();
 
