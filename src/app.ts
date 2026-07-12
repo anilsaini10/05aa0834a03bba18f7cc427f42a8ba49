@@ -10,6 +10,7 @@ import classRoutes         from './features/admin/classes/classes.routes';
 import subjectRoutes       from './features/admin/subjects/subjects.routes';
 import studentRoutes       from './features/admin/students/students.routes';
 import teacherRoutes       from './features/admin/teachers/teachers.routes';
+import announcementRoutes  from './features/admin/announcements/announcements.routes';
 import teacherSelfRoutes   from './features/teacher/teacher.routes';
 import studentSelfRoutes   from './features/students/students.routes';
 
@@ -48,6 +49,7 @@ app.use('/api/classes', classRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin/teachers', teacherRoutes);
+app.use('/api/admin/announcements', announcementRoutes);
 app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
 

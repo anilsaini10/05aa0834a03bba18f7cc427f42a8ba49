@@ -14,7 +14,10 @@
       "Bash(xargs kill -9)",
       "Bash(sleep 3 *)",
       "Read(//private/tmp/**)",
-      "Bash(python3 -m json.tool /Users/user/Desktop/Office/App/AriseFolder/arise_backend/postman/Arise-Auth.postman_collection.json)"
+      "Bash(python3 -m json.tool /Users/user/Desktop/Office/App/AriseFolder/arise_backend/postman/Arise-Auth.postman_collection.json)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']; print\\(d['title'], '-> status:', d['status'], 'publishAt:', d['publishAt'], 'expiresAt:', d['expiresAt']\\)\")",
+      "Bash(python3 -m json.tool /Users/user/Desktop/Office/App/AriseFolder/arise_backend/postman/AriseCollection.json)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\)['data'][0]; [print\\(s['name'], '-> classTeacherName:', s['classTeacherName']\\) for s in d['sections']]\")"
     ]
   }
 }

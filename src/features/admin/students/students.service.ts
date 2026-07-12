@@ -137,6 +137,16 @@ export const createStudent = async (
   return { student: toStudentResponse(student), parentAccount };
 };
 
+// ── Get a single student's details ────────────────────────────────
+export const getStudentById = async (schoolId: string, studentId: string): Promise<StudentResponse> => {
+  const student = await prisma.student.findFirst({
+    where:   { id: studentId, schoolId },
+    include: { class: true, section: true },
+  });
+  if (!student) throw notFound('Student not found', 'STUDENT_NOT_FOUND');
+  return toStudentResponse(student);
+};
+
 // ── List students (paginated, searchable) ────────────────────────
 export const listStudents = async (schoolId: string, query: ListStudentsQuerySchema) => {
   const { page, pageSize, search, classId, sectionId } = query;

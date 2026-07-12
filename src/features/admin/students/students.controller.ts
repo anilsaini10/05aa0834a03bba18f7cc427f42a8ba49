@@ -19,6 +19,21 @@ export const createHandler = async (
   }
 };
 
+// ── GET /admin/students/:studentId ─────────────────────────────
+export const getByIdHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const schoolId = (req as any).user.schoolId;
+    const student  = await studentsService.getStudentById(schoolId, req.params.studentId);
+    sendSuccess(res, student);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /admin/students ───────────────────────────────────────
 export const listHandler = async (
   req: Request,

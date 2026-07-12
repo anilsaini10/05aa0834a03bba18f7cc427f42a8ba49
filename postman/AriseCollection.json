@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Arise App API",
-    "description": "Auth (signup/login/refresh/logout/me), School directory search, Push Notifications, and Admin academic management (classes, subjects, students, teachers).",
+    "description": "Auth (signup/login/refresh/logout/me), School directory search, Push Notifications, Admin academic management (classes, subjects, students, teachers, announcements), and Teacher/Parent self-service.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -21,7 +21,10 @@
     { "key": "sectionId", "value": "", "type": "string" },
     { "key": "subjectId", "value": "", "type": "string" },
     { "key": "parentEmail", "value": "suresh.verma@example.com", "type": "string" },
-    { "key": "teacherEmail", "value": "priya.singh@example.com", "type": "string" }
+    { "key": "teacherEmail", "value": "priya.singh@example.com", "type": "string" },
+    { "key": "teacherId", "value": "", "type": "string" },
+    { "key": "studentId", "value": "", "type": "string" },
+    { "key": "announcementId", "value": "", "type": "string" }
   ],
   "item": [
     {
@@ -554,6 +557,20 @@
         },
         {
           "name": "List Students",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data.items[0]) pm.collectionVariables.set('studentId', body.data.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "url": {
@@ -568,7 +585,19 @@
                 { "key": "sectionId", "value": "{{sectionId}}", "disabled": true }
               ]
             },
-            "description": "Requires ADMIN. search matches name/admissionNo/parentName. Enable the classId/sectionId query params to filter further."
+            "description": "Requires ADMIN. search matches name/admissionNo/parentName. Enable the classId/sectionId query params to filter further. Saves the first result's id to {{studentId}} for use in Get Student Details below."
+          }
+        },
+        {
+          "name": "Get Student Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/students/{{studentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "students", "{{studentId}}"]
+            },
+            "description": "Requires ADMIN. Fetches a single student's full details by id (same shape as one item from List Students). 404 STUDENT_NOT_FOUND if the id doesn't exist or belongs to a different school."
           }
         }
       ]
@@ -590,7 +619,24 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "admin", "teachers"]
             },
-            "description": "Requires ADMIN. classId says which class this teacher teaches `subject` in — 404 CLASS_NOT_FOUND if it doesn't belong to this school. Creates a TEACHER user (password = generateDefaultPassword(email), returned once as plaintext defaultPassword), a Teacher profile, upserts the Subject by (schoolId, name), links it into the class's curriculum (ClassSubject) if not already, and records the teacher-subject-class assignment. Fails 409 EMAIL_TAKEN if the email belongs to any user at this school."
+            "description": "Requires ADMIN. classId says which class this teacher teaches `subject` in — 404 CLASS_NOT_FOUND if it doesn't belong to this school. Creates a TEACHER user (password = generateDefaultPassword(email), returned once as plaintext defaultPassword), a Teacher profile, upserts the Subject by (schoolId, name), links it into the class's curriculum (ClassSubject) if not already, and records the teacher-subject-class assignment. Fails 409 EMAIL_TAKEN if the email belongs to any user at this school.\n\nOptional field `classTeacherSectionId` (see 'Create Teacher as Class Teacher' below) makes this teacher the homeroom/Class Teacher of a section — independent of the subject/classId above."
+          }
+        },
+        {
+          "name": "Create Teacher as Class Teacher (classTeacherSectionId)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rekha Gupta\",\n  \"email\": \"rekha.gupta@example.com\",\n  \"phone\": \"9123456790\",\n  \"gender\": \"FEMALE\",\n  \"subject\": \"Hindi\",\n  \"classId\": \"{{classId}}\",\n  \"salary\": 42000,\n  \"joiningDate\": \"2024-06-01\",\n  \"classTeacherSectionId\": \"{{sectionId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/teachers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "teachers"]
+            },
+            "description": "Requires ADMIN. `classTeacherSectionId` is OPTIONAL — when provided, this teacher becomes the Class Teacher (homeroom in-charge) of that section (sets Section.classTeacherId). It is independent of `classId`/`subject` above — a teacher can be Class Teacher of one section while teaching subjects in entirely different classes.\n\nErrors: 404 SECTION_NOT_FOUND if the section doesn't exist / belongs to another school. 409 SECTION_ALREADY_HAS_CLASS_TEACHER if that section already has a different class teacher assigned — reassignment isn't silent, you'd need to null it out first (no endpoint for that yet).\n\nThe response's `teacher.classTeacherOf` array reflects this (empty array if not a class teacher of anything). This also immediately shows up in GET /api/classes and GET /api/teacher/classes as that section's classTeacherId/classTeacherName."
           }
         },
         {
@@ -627,6 +673,20 @@
         },
         {
           "name": "List Teachers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data.items[0]) pm.collectionVariables.set('teacherId', body.data.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "url": {
@@ -641,7 +701,179 @@
                 { "key": "search", "value": "priya", "disabled": true }
               ]
             },
-            "description": "Requires ADMIN. search matches name/employeeId/email. subject filters by exact subject name, classId filters to teachers assigned to that class."
+            "description": "Requires ADMIN. search matches name/employeeId/email. subject filters by exact subject name, classId filters to teachers assigned to that class. Saves the first result's id to {{teacherId}} for use in Get Teacher Details below."
+          }
+        },
+        {
+          "name": "Get Teacher Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/teachers/{{teacherId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "teachers", "{{teacherId}}"]
+            },
+            "description": "Requires ADMIN. Fetches a single teacher's full details by id (same shape as one item from List Teachers). 404 TEACHER_NOT_FOUND if the id doesn't exist or belongs to a different school."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Announcements",
+      "item": [
+        {
+          "name": "Create Announcement (audience=ALL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('announcementId', body.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"School reopens Monday\",\n  \"message\": \"School reopens on Monday after the break.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements"]
+            },
+            "description": "Requires ADMIN. `audience` defaults to ALL if omitted — valid values: ALL | TEACHER | PARENT. eventDate/publishAt/expiresAt are all optional (see 'Create Scheduled Announcement' below). Saves the created id to {{announcementId}}."
+          }
+        },
+        {
+          "name": "Create Scheduled Announcement (publishAt/expiresAt/eventDate)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Annual Sports Day\",\n  \"message\": \"Sports day will be held on the school ground.\",\n  \"audience\": \"ALL\",\n  \"eventDate\": \"2026-12-25\",\n  \"publishAt\": \"2026-12-01T00:00:00Z\",\n  \"expiresAt\": \"2026-12-26T00:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements"]
+            },
+            "description": "All three date fields are optional and independent:\n- eventDate: the date this announcement is ABOUT (display only, doesn't affect visibility).\n- publishAt: don't show this to teachers/parents until this date/time (null = visible immediately).\n- expiresAt: stop showing this after this date/time (null = never expires).\nAdmin's own list/get always shows it regardless of the window — only the Teacher/Parent self-service feeds (GET /api/teacher/announcements, GET /api/students/announcements) filter by publishAt/expiresAt. The response's computed `status` field (SCHEDULED/ACTIVE/EXPIRED) tells you which state it's currently in. 400 VALIDATION_ERROR if expiresAt <= publishAt."
+          }
+        },
+        {
+          "name": "Create Announcement (audience=TEACHER)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Staff meeting Friday\",\n  \"message\": \"All teachers meeting at 3pm Friday.\",\n  \"audience\": \"TEACHER\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements"]
+            }
+          }
+        },
+        {
+          "name": "Create Announcement (audience=PARENT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Fee due reminder\",\n  \"message\": \"Term fee due by 15th.\",\n  \"audience\": \"PARENT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements"]
+            }
+          }
+        },
+        {
+          "name": "Create Announcement - Invalid Audience (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad\",\n  \"message\": \"x\",\n  \"audience\": \"EVERYONE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements"]
+            }
+          }
+        },
+        {
+          "name": "List Announcements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements?page=1&pageSize=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "search", "value": "fee", "disabled": true },
+                { "key": "audience", "value": "TEACHER", "disabled": true }
+              ]
+            },
+            "description": "Requires ADMIN. search matches title/message. audience filters by exact ALL|TEACHER|PARENT value."
+          }
+        },
+        {
+          "name": "Get Announcement Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements/{{announcementId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements", "{{announcementId}}"]
+            },
+            "description": "Requires ADMIN. 404 ANNOUNCEMENT_NOT_FOUND if the id doesn't exist or belongs to a different school."
+          }
+        },
+        {
+          "name": "Update Announcement",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"School reopens Tuesday now\",\n  \"audience\": \"PARENT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements/{{announcementId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements", "{{announcementId}}"]
+            },
+            "description": "Requires ADMIN. Partial update — send only the field(s) you want to change (title/message/audience/eventDate/publishAt/expiresAt). At least one is required, 400 VALIDATION_ERROR if body is empty. If you change only one of publishAt/expiresAt, it's cross-checked against the OTHER field's existing stored value — 400 INVALID_DATE_RANGE if the merged result would have expiresAt <= publishAt."
+          }
+        },
+        {
+          "name": "Delete Announcement",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/announcements/{{announcementId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "announcements", "{{announcementId}}"]
+            },
+            "description": "Requires ADMIN. Hard delete — cannot be undone. 404 ANNOUNCEMENT_NOT_FOUND if already deleted or belongs to a different school."
           }
         }
       ]
@@ -725,6 +957,23 @@
             },
             "description": "Requires TEACHER. classId is REQUIRED and must be one of this teacher's own classes (from List My Classes) — otherwise 403 CLASS_NOT_ASSIGNED. Never trust a client-supplied classId for a class this teacher doesn't actually teach."
           }
+        },
+        {
+          "name": "List My Announcements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/announcements?page=1&pageSize=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "announcements"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Requires TEACHER. Returns only announcements with audience=ALL or audience=TEACHER for this teacher's school — PARENT-only announcements are never included. Also excludes anything not yet published (publishAt in the future) or already expired (expiresAt in the past) — you only ever see currently-active ones here."
+          }
         }
       ]
     },
@@ -775,6 +1024,23 @@
               "path": ["api", "students", "reset-password"]
             },
             "description": "Requires PARENT. 400 INVALID_CURRENT_PASSWORD if currentPassword is wrong. On success, ALL of this user's refresh tokens are revoked — log in again afterward. Use this to change the one-time defaultPassword the admin generated when this student was added."
+          }
+        },
+        {
+          "name": "List My Announcements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/students/announcements?page=1&pageSize=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "students", "announcements"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Requires PARENT. Returns only announcements with audience=ALL or audience=PARENT for this parent's school — TEACHER-only announcements are never included. Also excludes anything not yet published (publishAt in the future) or already expired (expiresAt in the past) — you only ever see currently-active ones here."
           }
         }
       ]

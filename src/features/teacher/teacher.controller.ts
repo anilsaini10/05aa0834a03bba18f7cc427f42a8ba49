@@ -4,6 +4,7 @@ import {
   updateProfileSchema,
   resetPasswordSchema,
   listMyStudentsQuerySchema,
+  listMyAnnouncementsQuerySchema,
 } from './teacher.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -74,6 +75,21 @@ export const listStudentsHandler = async (
   try {
     const query  = listMyStudentsQuerySchema.parse(req.query);
     const result = await teacherService.listMyStudents((req as any).user.sub, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/announcements ─────────────────────────────────
+export const listAnnouncementsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listMyAnnouncementsQuerySchema.parse(req.query);
+    const result = await teacherService.listMyAnnouncements((req as any).user.sub, query);
     sendSuccess(res, result);
   } catch (err) {
     next(err);
