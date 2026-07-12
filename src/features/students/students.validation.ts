@@ -10,5 +10,12 @@ export const resetPasswordSchema = z.object({
   newPassword:     z.string().min(8, 'New password must be at least 8 characters').max(100),
 });
 
-export type UpdateProfileSchema = z.infer<typeof updateProfileSchema>;
-export type ResetPasswordSchema = z.infer<typeof resetPasswordSchema>;
+export const listMyAnnouncementsQuerySchema = z.object({
+  page:     z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(15),
+  search:   z.string().trim().min(1).optional(),
+});
+
+export type UpdateProfileSchema           = z.infer<typeof updateProfileSchema>;
+export type ResetPasswordSchema           = z.infer<typeof resetPasswordSchema>;
+export type ListMyAnnouncementsQuerySchema = z.infer<typeof listMyAnnouncementsQuerySchema>;

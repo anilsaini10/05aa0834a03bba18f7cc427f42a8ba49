@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import * as studentsService from './students.service';
-import { updateProfileSchema, resetPasswordSchema } from './students.validation';
+import {
+  updateProfileSchema,
+  resetPasswordSchema,
+  listMyAnnouncementsQuerySchema,
+} from './students.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
 // ── GET /students/profile ─────────────────────────────────────
@@ -42,6 +46,21 @@ export const resetPasswordHandler = async (
     const { currentPassword, newPassword } = resetPasswordSchema.parse(req.body);
     await studentsService.resetPassword((req as any).user.sub, currentPassword, newPassword);
     sendSuccess(res, { message: 'Password updated successfully. Please log in again on other devices.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /students/announcements ────────────────────────────────
+export const listAnnouncementsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listMyAnnouncementsQuerySchema.parse(req.query);
+    const result = await studentsService.listMyAnnouncements((req as any).user.sub, query);
+    sendSuccess(res, result);
   } catch (err) {
     next(err);
   }

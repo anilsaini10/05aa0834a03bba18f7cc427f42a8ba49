@@ -34,16 +34,25 @@ const startServer = async (): Promise<void> => {
     console.log('  POST /api/subjects');
     console.log('  POST /api/admin/students');
     console.log('  GET  /api/admin/students');
+    console.log('  GET  /api/admin/students/:studentId');
     console.log('  POST /api/admin/teachers');
     console.log('  GET  /api/admin/teachers');
+    console.log('  GET  /api/admin/teachers/:teacherId');
+    console.log('  POST /api/admin/announcements');
+    console.log('  GET  /api/admin/announcements');
+    console.log('  GET  /api/admin/announcements/:announcementId');
+    console.log('  PATCH /api/admin/announcements/:announcementId');
+    console.log('  DELETE /api/admin/announcements/:announcementId');
     console.log('  GET  /api/teacher/profile');
     console.log('  PATCH /api/teacher/profile');
     console.log('  POST /api/teacher/reset-password');
     console.log('  GET  /api/teacher/classes');
     console.log('  GET  /api/teacher/students');
+    console.log('  GET  /api/teacher/announcements');
     console.log('  GET  /api/students/profile');
     console.log('  PATCH /api/students/profile');
     console.log('  POST /api/students/reset-password');
+    console.log('  GET  /api/students/announcements');
     console.log('');
   });
 

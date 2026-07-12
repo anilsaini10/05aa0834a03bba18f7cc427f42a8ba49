@@ -28,6 +28,12 @@ enum Gender {
   OTHER
 }
 
+enum AnnouncementAudience {
+  ALL
+  TEACHER
+  PARENT
+}
+
 // ── User ──────────────────────────────────────────────────────
 model User {
   id            String         @id @default(uuid())
@@ -44,8 +50,9 @@ model User {
   school           School         @relation(fields: [schoolId], references: [id])
   refreshTokens    RefreshToken[]
   deviceTokens     DeviceToken[]
-  parentOfStudents Student[]
-  teacherProfile   Teacher?
+  parentOfStudents      Student[]
+  teacherProfile        Teacher?
+  announcementsCreated  Announcement[]
 
   @@index([schoolId])
   @@map("users")
@@ -58,13 +65,34 @@ model School {
   city      String?
   createdAt DateTime  @default(now())
 
-  users     User[]
-  classes   Class[]
-  subjects  Subject[]
-  students  Student[]
-  teachers  Teacher[]
+  users         User[]
+  classes       Class[]
+  subjects      Subject[]
+  students      Student[]
+  teachers      Teacher[]
+  announcements Announcement[]
 
   @@map("schools")
+}
+
+// ── Announcement ──────────────────────────────────────────────
+model Announcement {
+  id            String               @id @default(uuid())
+  schoolId      String
+  school        School               @relation(fields: [schoolId], references: [id])
+  title         String
+  message       String
+  audience      AnnouncementAudience @default(ALL)
+  eventDate     DateTime?
+  publishAt     DateTime?
+  expiresAt     DateTime?
+  createdBy     String
+  createdByUser User                 @relation(fields: [createdBy], references: [id])
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([schoolId])
+  @@map("announcements")
 }
 
 // ── RefreshToken ───────────────────────────────────────────────

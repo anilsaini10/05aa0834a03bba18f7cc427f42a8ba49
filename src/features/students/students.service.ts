@@ -1,6 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { changeOwnPassword } from '../../shared/services/account.service';
-import { UpdateProfileSchema } from './students.validation';
+import { UpdateProfileSchema, ListMyAnnouncementsQuerySchema } from './students.validation';
 
 // ── GET /students/profile ─────────────────────────────────────
 // Returns the logged-in PARENT's own profile plus every child
@@ -55,4 +56,56 @@ export const resetPassword = async (
   newPassword: string,
 ): Promise<void> => {
   await changeOwnPassword(userId, currentPassword, newPassword);
+};
+
+// ── GET /students/announcements ───────────────────────────────
+// Only announcements meant for PARENT (or everyone, ALL) — never
+// TEACHER-only announcements.
+export const listMyAnnouncements = async (userId: string, query: ListMyAnnouncementsQuerySchema) => {
+  const parent = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const { page, pageSize, search } = query;
+  const now = new Date();
+
+  const where: Prisma.AnnouncementWhereInput = {
+    schoolId: parent.schoolId,
+    audience: { in: ['ALL', 'PARENT'] },
+    AND: [
+      { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
+      { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+    ],
+    ...(search ? {
+      OR: [
+        { title:   { contains: search, mode: 'insensitive' } },
+        { message: { contains: search, mode: 'insensitive' } },
+      ],
+    } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.announcement.findMany({
+      where,
+      include:  { createdByUser: true },
+      orderBy:  { createdAt: 'desc' },
+      skip:     (page - 1) * pageSize,
+      take:     pageSize,
+    }),
+    prisma.announcement.count({ where }),
+  ]);
+
+  return {
+    items: items.map(a => ({
+      id:        a.id,
+      title:     a.title,
+      message:   a.message,
+      audience:  a.audience,
+      eventDate: a.eventDate,
+      createdBy: { id: a.createdByUser.id, name: a.createdByUser.name },
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+    })),
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 };

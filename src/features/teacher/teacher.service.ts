@@ -1,7 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { changeOwnPassword } from '../../shared/services/account.service';
-import { UpdateProfileSchema, ListMyStudentsQuerySchema } from './teacher.validation';
+import {
+  UpdateProfileSchema,
+  ListMyStudentsQuerySchema,
+  ListMyAnnouncementsQuerySchema,
+} from './teacher.validation';
 
 const notFound = (message: string, code: string) => {
   const err = new Error(message) as any;
@@ -171,6 +175,58 @@ export const listMyStudents = async (userId: string, query: ListMyStudentsQueryS
       address:              s.address,
       status:               s.status,
       attendancePercentage: s.attendancePercentage,
+    })),
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+};
+
+// ── GET /teacher/announcements ────────────────────────────────
+// Only announcements meant for TEACHER (or everyone, ALL) — never
+// PARENT-only announcements.
+export const listMyAnnouncements = async (userId: string, query: ListMyAnnouncementsQuerySchema) => {
+  const teacher = await getTeacherByUserId(userId);
+  const { page, pageSize, search } = query;
+  const now = new Date();
+
+  const where: Prisma.AnnouncementWhereInput = {
+    schoolId: teacher.schoolId,
+    audience: { in: ['ALL', 'TEACHER'] },
+    AND: [
+      { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
+      { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+    ],
+    ...(search ? {
+      OR: [
+        { title:   { contains: search, mode: 'insensitive' } },
+        { message: { contains: search, mode: 'insensitive' } },
+      ],
+    } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.announcement.findMany({
+      where,
+      include:  { createdByUser: true },
+      orderBy:  { createdAt: 'desc' },
+      skip:     (page - 1) * pageSize,
+      take:     pageSize,
+    }),
+    prisma.announcement.count({ where }),
+  ]);
+
+  return {
+    items: items.map(a => ({
+      id:        a.id,
+      title:     a.title,
+      message:   a.message,
+      audience:  a.audience,
+      eventDate: a.eventDate,
+      createdBy: { id: a.createdByUser.id, name: a.createdByUser.name },
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
     })),
     page,
     pageSize,

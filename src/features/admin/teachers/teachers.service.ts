@@ -1,4 +1,4 @@
-import { Prisma, Teacher, User, TeacherSubject, Subject, Class } from '@prisma/client';
+import { Prisma, Teacher, User, TeacherSubject, Subject, Class, Section } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import { hashPassword } from '../../../shared/utils/hash';
 import { generateDefaultPassword } from '../../../shared/utils/defaultPassword';
@@ -7,11 +7,19 @@ import { CreateTeacherSchema, ListTeachersQuerySchema } from './teachers.validat
 type TeacherWithRefs = Teacher & {
   user: User;
   subjects: (TeacherSubject & { subject: Subject; class: Class })[];
+  sectionsAsTeacher: (Section & { class: Class })[];
 };
 
 export interface TeacherSubjectRef {
   subjectId:   string;
   name:        string;
+  classId:     string;
+  className:   string;
+}
+
+export interface ClassTeacherSectionRef {
+  sectionId:   string;
+  sectionName: string;
   classId:     string;
   className:   string;
 }
@@ -24,6 +32,7 @@ export interface TeacherResponse {
   email:            string;
   phone:            string | null;
   subjects:         TeacherSubjectRef[];
+  classTeacherOf:   ClassTeacherSectionRef[];
   joiningDate:      Date;
   salary:           number;
   status:           string;
@@ -45,8 +54,9 @@ const notFound = (message: string, code: string) => {
 };
 
 const TEACHER_INCLUDE = {
-  user:     true,
-  subjects: { include: { subject: true, class: true } },
+  user:              true,
+  subjects:          { include: { subject: true, class: true } },
+  sectionsAsTeacher: { include: { class: true } },
 };
 
 const toTeacherResponse = (teacher: TeacherWithRefs): TeacherResponse => ({
@@ -62,13 +72,20 @@ const toTeacherResponse = (teacher: TeacherWithRefs): TeacherResponse => ({
     classId:   ts.class.id,
     className: ts.class.name,
   })),
+  classTeacherOf: teacher.sectionsAsTeacher.map(s => ({
+    sectionId:   s.id,
+    sectionName: s.name,
+    classId:     s.classId,
+    className:   s.class.name,
+  })),
   joiningDate:      teacher.joiningDate,
   salary:           teacher.salary,
   status:           teacher.status,
   performanceScore: teacher.performanceScore,
 });
 
-// ── Create a teacher (user account + Teacher profile + subject-in-class link) ─
+// ── Create a teacher (user account + Teacher profile + subject-in-class link,
+//    optionally also making them the Class Teacher of one section) ──────────
 export const createTeacher = async (
   schoolId: string,
   input: CreateTeacherSchema,
@@ -81,6 +98,19 @@ export const createTeacher = async (
 
   const klass = await prisma.class.findFirst({ where: { id: input.classId, schoolId } });
   if (!klass) throw notFound('Class not found', 'CLASS_NOT_FOUND');
+
+  if (input.classTeacherSectionId) {
+    const section = await prisma.section.findFirst({
+      where:   { id: input.classTeacherSectionId },
+      include: { class: true },
+    });
+    if (!section || section.class.schoolId !== schoolId) {
+      throw notFound('Section not found', 'SECTION_NOT_FOUND');
+    }
+    if (section.classTeacherId) {
+      throw conflict('This section already has a class teacher assigned', 'SECTION_ALREADY_HAS_CLASS_TEACHER');
+    }
+  }
 
   const defaultPassword = generateDefaultPassword(input.email);
   const passwordHash    = await hashPassword(defaultPassword);
@@ -113,7 +143,7 @@ export const createTeacher = async (
     const teacherCount = await tx.teacher.count({ where: { schoolId } });
     const employeeId   = `EMP${String(teacherCount + 1).padStart(4, '0')}`;
 
-    return tx.teacher.create({
+    const created = await tx.teacher.create({
       data: {
         employeeId,
         userId:      user.id,
@@ -123,11 +153,35 @@ export const createTeacher = async (
         schoolId,
         subjects: { create: { subjectId: subject.id, classId: input.classId } },
       },
-      include: TEACHER_INCLUDE,
     });
+
+    if (input.classTeacherSectionId) {
+      // Re-check inside the transaction to close the race window between the
+      // pre-check above and this write — only one class teacher per section.
+      const section = await tx.section.findUnique({ where: { id: input.classTeacherSectionId } });
+      if (section?.classTeacherId) {
+        throw conflict('This section already has a class teacher assigned', 'SECTION_ALREADY_HAS_CLASS_TEACHER');
+      }
+      await tx.section.update({
+        where: { id: input.classTeacherSectionId },
+        data:  { classTeacherId: created.id },
+      });
+    }
+
+    return tx.teacher.findUniqueOrThrow({ where: { id: created.id }, include: TEACHER_INCLUDE });
   });
 
   return { teacher: toTeacherResponse(teacher), defaultPassword };
+};
+
+// ── Get a single teacher's details ────────────────────────────────
+export const getTeacherById = async (schoolId: string, teacherId: string): Promise<TeacherResponse> => {
+  const teacher = await prisma.teacher.findFirst({
+    where:   { id: teacherId, schoolId },
+    include: TEACHER_INCLUDE,
+  });
+  if (!teacher) throw notFound('Teacher not found', 'TEACHER_NOT_FOUND');
+  return toTeacherResponse(teacher);
 };
 
 // ── List teachers (paginated, searchable) ────────────────────────
