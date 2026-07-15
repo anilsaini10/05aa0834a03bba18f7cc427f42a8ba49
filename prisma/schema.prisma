@@ -34,6 +34,36 @@ enum AnnouncementAudience {
   PARENT
 }
 
+enum EventType {
+  HOLIDAY
+  EXAM
+  MEETING
+  ACTIVITY
+  OTHER
+}
+
+enum ResultStatus {
+  PENDING
+  GRADED
+  ABSENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEAVE
+  HOLIDAY
+}
+
+enum HomeworkType {
+  ASSIGNMENT
+  PROJECT
+  READING
+  PRACTICE
+  OTHER
+}
+
 // ── User ──────────────────────────────────────────────────────
 model User {
   id            String         @id @default(uuid())
@@ -53,6 +83,10 @@ model User {
   parentOfStudents      Student[]
   teacherProfile        Teacher?
   announcementsCreated  Announcement[]
+  eventsCreated         Event[]
+  examsCreated          Exam[]
+  attendanceMarked      AttendanceRecord[]
+  homeworkCreated       Homework[]
 
   @@index([schoolId])
   @@map("users")
@@ -70,7 +104,11 @@ model School {
   subjects      Subject[]
   students      Student[]
   teachers      Teacher[]
-  announcements Announcement[]
+  announcements     Announcement[]
+  events            Event[]
+  exams             Exam[]
+  attendanceRecords AttendanceRecord[]
+  homework          Homework[]
 
   @@map("schools")
 }
@@ -93,6 +131,138 @@ model Announcement {
 
   @@index([schoolId])
   @@map("announcements")
+}
+
+// ── Event ─────────────────────────────────────────────────────
+// Fixed-date school events — holidays, exam schedules, meetings, etc.
+model Event {
+  id            String               @id @default(uuid())
+  schoolId      String
+  school        School               @relation(fields: [schoolId], references: [id])
+  title         String
+  description   String?
+  eventType     EventType
+  audience      AnnouncementAudience @default(ALL)
+  startDate     DateTime
+  endDate       DateTime
+  createdBy     String
+  createdByUser User                 @relation(fields: [createdBy], references: [id])
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([schoolId])
+  @@index([startDate])
+  @@map("events")
+}
+
+// ── Exam ──────────────────────────────────────────────────────
+model Exam {
+  id            String       @id @default(uuid())
+  schoolId      String
+  school        School       @relation(fields: [schoolId], references: [id])
+  title         String
+  description   String?
+  startDate     DateTime?
+  endDate       DateTime?
+  createdBy     String
+  createdByUser User         @relation(fields: [createdBy], references: [id])
+  classes       ExamClass[]
+  results       ExamResult[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([schoolId])
+  @@map("exams")
+}
+
+// ── ExamClass ─────────────────────────────────────────────────
+// Which classes this exam applies to, and the max marks for that class
+// (e.g. Class 5 exam out of 50, Class 10 exam out of 100).
+model ExamClass {
+  examId   String
+  classId  String
+  maxMarks Float
+  exam     Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  class    Class @relation(fields: [classId], references: [id])
+
+  @@id([examId, classId])
+  @@map("exam_classes")
+}
+
+// ── ExamResult ────────────────────────────────────────────────
+// One row per student per exam — marks/grade/status. classId is a
+// snapshot of the student's class at grading time (not re-derived),
+// so it stays historically accurate even if the student later moves classes.
+model ExamResult {
+  id            String       @id @default(uuid())
+  examId        String
+  exam          Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student      @relation(fields: [studentId], references: [id])
+  classId       String
+  class         Class        @relation(fields: [classId], references: [id])
+  marksObtained Float?
+  grade         String?
+  remarks       String?
+  status        ResultStatus @default(PENDING)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([examId, studentId])
+  @@map("exam_results")
+}
+
+// ── AttendanceRecord ────────────────────────────────────────────
+// One row per student per calendar day. classId/sectionId are a
+// snapshot at marking time (mirrors ExamResult's approach).
+model AttendanceRecord {
+  id           String           @id @default(uuid())
+  schoolId     String
+  school       School           @relation(fields: [schoolId], references: [id])
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id])
+  classId      String
+  class        Class            @relation(fields: [classId], references: [id])
+  sectionId    String
+  section      Section          @relation(fields: [sectionId], references: [id])
+  date         DateTime         @db.Date
+  status       AttendanceStatus
+  markedBy     String
+  markedByUser User             @relation(fields: [markedBy], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([studentId, date])
+  @@index([schoolId, date])
+  @@index([classId, date])
+  @@map("attendance_records")
+}
+
+// ── Homework ────────────────────────────────────────────────────
+// Assigned by the subject teacher (must teach this subject in this
+// class, via TeacherSubject — not restricted to the Class Teacher).
+model Homework {
+  id            String       @id @default(uuid())
+  schoolId      String
+  school        School       @relation(fields: [schoolId], references: [id])
+  classId       String
+  class         Class        @relation(fields: [classId], references: [id])
+  sectionId     String
+  section       Section      @relation(fields: [sectionId], references: [id])
+  subjectId     String
+  subject       Subject      @relation(fields: [subjectId], references: [id])
+  title         String
+  description   String?
+  type          HomeworkType @default(ASSIGNMENT)
+  dueDate       DateTime
+  createdBy     String
+  createdByUser User         @relation(fields: [createdBy], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([schoolId])
+  @@index([classId, sectionId, dueDate])
+  @@map("homework")
 }
 
 // ── RefreshToken ───────────────────────────────────────────────
@@ -131,9 +301,13 @@ model Class {
   school          School           @relation(fields: [schoolId], references: [id])
   sections        Section[]
   students        Student[]
-  subjects        ClassSubject[]
-  teacherSubjects TeacherSubject[]
-  createdAt       DateTime         @default(now())
+  subjects          ClassSubject[]
+  teacherSubjects   TeacherSubject[]
+  examClasses       ExamClass[]
+  examResults       ExamResult[]
+  attendanceRecords AttendanceRecord[]
+  homework          Homework[]
+  createdAt         DateTime           @default(now())
 
   @@unique([schoolId, name])
   @@map("classes")
@@ -149,6 +323,8 @@ model Section {
   classTeacherId String?
   classTeacher   Teacher?  @relation(fields: [classTeacherId], references: [id])
   students       Student[]
+  attendanceRecords AttendanceRecord[]
+  homework       Homework[]
 
   @@unique([classId, name])
   @@map("sections")
@@ -162,6 +338,7 @@ model Subject {
   school   School           @relation(fields: [schoolId], references: [id])
   teachers TeacherSubject[]
   classes  ClassSubject[]
+  homework Homework[]
 
   @@unique([schoolId, name])
   @@map("subjects")
@@ -202,6 +379,8 @@ model Student {
   attendancePercentage Float    @default(100)
   schoolId             String
   school               School   @relation(fields: [schoolId], references: [id])
+  examResults          ExamResult[]
+  attendanceRecords    AttendanceRecord[]
   createdAt            DateTime @default(now())
 
   @@index([schoolId])

@@ -11,6 +11,9 @@ import subjectRoutes       from './features/admin/subjects/subjects.routes';
 import studentRoutes       from './features/admin/students/students.routes';
 import teacherRoutes       from './features/admin/teachers/teachers.routes';
 import announcementRoutes  from './features/admin/announcements/announcements.routes';
+import eventRoutes         from './features/events/events.routes';
+import examRoutes          from './features/admin/exams/exams.routes';
+import attendanceReportRoutes from './features/admin/attendanceReport/attendanceReport.routes';
 import teacherSelfRoutes   from './features/teacher/teacher.routes';
 import studentSelfRoutes   from './features/students/students.routes';
 
@@ -50,6 +53,9 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin/teachers', teacherRoutes);
 app.use('/api/admin/announcements', announcementRoutes);
+app.use('/api/admin/events', eventRoutes);
+app.use('/api/admin/exams', examRoutes);
+app.use('/api/admin/attendance', attendanceReportRoutes);
 app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
 

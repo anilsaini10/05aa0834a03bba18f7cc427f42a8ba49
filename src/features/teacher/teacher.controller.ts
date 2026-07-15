@@ -5,6 +5,13 @@ import {
   resetPasswordSchema,
   listMyStudentsQuerySchema,
   listMyAnnouncementsQuerySchema,
+  getSectionAttendanceQuerySchema,
+  markAttendanceSchema,
+  studentAttendanceHistoryQuerySchema,
+  updateAttendanceRecordSchema,
+  createHomeworkSchema,
+  updateHomeworkSchema,
+  listMyHomeworkQuerySchema,
 } from './teacher.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -91,6 +98,143 @@ export const listAnnouncementsHandler = async (
     const query  = listMyAnnouncementsQuerySchema.parse(req.query);
     const result = await teacherService.listMyAnnouncements((req as any).user.sub, query);
     sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/attendance ─────────────────────────────────────
+export const getSectionAttendanceHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = getSectionAttendanceQuerySchema.parse(req.query);
+    const result = await teacherService.getSectionAttendance((req as any).user.sub, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /teacher/attendance ────────────────────────────────────
+export const markAttendanceHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = markAttendanceSchema.parse(req.body);
+    const result = await teacherService.markAttendance((req as any).user.sub, input);
+    sendSuccess(res, result, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/attendance/students/:studentId ─────────────────
+export const getStudentAttendanceHistoryHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = studentAttendanceHistoryQuerySchema.parse(req.query);
+    const result = await teacherService.getStudentAttendanceHistory(
+      (req as any).user.sub, req.params.studentId, query,
+    );
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /teacher/attendance/:recordId ──────────────────────────
+export const updateAttendanceRecordHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = updateAttendanceRecordSchema.parse(req.body);
+    const result = await teacherService.updateAttendanceRecord(
+      (req as any).user.sub, req.params.recordId, input,
+    );
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /teacher/homework ──────────────────────────────────────
+export const createHomeworkHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = createHomeworkSchema.parse(req.body);
+    const result = await teacherService.createHomework((req as any).user.sub, input);
+    sendSuccess(res, result, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/homework ───────────────────────────────────────
+export const listHomeworkHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listMyHomeworkQuerySchema.parse(req.query);
+    const result = await teacherService.listMyHomework((req as any).user.sub, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/homework/:homeworkId ───────────────────────────
+export const getHomeworkHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const result = await teacherService.getHomeworkById((req as any).user.sub, req.params.homeworkId);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /teacher/homework/:homeworkId ─────────────────────────
+export const updateHomeworkHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = updateHomeworkSchema.parse(req.body);
+    const result = await teacherService.updateHomework((req as any).user.sub, req.params.homeworkId, input);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /teacher/homework/:homeworkId ────────────────────────
+export const deleteHomeworkHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    await teacherService.deleteHomework((req as any).user.sub, req.params.homeworkId);
+    sendSuccess(res, { message: 'Homework deleted successfully' });
   } catch (err) {
     next(err);
   }

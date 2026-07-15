@@ -1,5 +1,10 @@
 import { prisma } from '../../../config/db';
-import { CreateClassSchema, AddSectionSchema } from './classes.validation';
+import {
+  CreateClassSchema,
+  AddSectionSchema,
+  UpdateClassSchema,
+  UpdateSectionSchema,
+} from './classes.validation';
 
 export interface SectionListItem {
   id:               string;
@@ -165,4 +170,120 @@ export const addSubjectToClass = async (
   });
 
   return links.map(l => ({ id: l.subject.id, name: l.subject.name }));
+};
+
+// ── Update a Class (name / numericLevel) ──────────────────────
+export const updateClass = async (
+  schoolId: string,
+  classId: string,
+  input: UpdateClassSchema,
+): Promise<ClassListItem> => {
+
+  const existing = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+  if (!existing) throw notFound('Class not found', 'CLASS_NOT_FOUND');
+
+  if (input.name) {
+    const nameTaken = await prisma.class.findFirst({
+      where: { schoolId, name: input.name, NOT: { id: classId } },
+    });
+    if (nameTaken) throw conflict('A class with this name already exists', 'CLASS_NAME_TAKEN');
+  }
+
+  const klass = await prisma.class.update({
+    where:   { id: classId },
+    data:    input,
+    include: CLASS_INCLUDE,
+  });
+
+  return toClassListItem(klass);
+};
+
+// ── Delete a Class ─────────────────────────────────────────────
+// Blocked if it has enrolled students. Otherwise cascades its own
+// Sections + curriculum/teacher links (ExamResult can't reference this
+// class without a student, so if there are no students there are no
+// results to worry about either).
+export const deleteClass = async (schoolId: string, classId: string): Promise<void> => {
+  const existing = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+  if (!existing) throw notFound('Class not found', 'CLASS_NOT_FOUND');
+
+  const studentCount = await prisma.student.count({ where: { classId } });
+  if (studentCount > 0) {
+    throw conflict('This class has enrolled students — remove/reassign them first', 'CLASS_HAS_STUDENTS');
+  }
+
+  await prisma.$transaction([
+    prisma.teacherSubject.deleteMany({ where: { classId } }),
+    prisma.examClass.deleteMany({ where: { classId } }),
+    prisma.classSubject.deleteMany({ where: { classId } }),
+    prisma.section.deleteMany({ where: { classId } }),
+    prisma.class.delete({ where: { id: classId } }),
+  ]);
+};
+
+// ── Update a Section (name / capacity / classTeacherId) ───────
+export const updateSection = async (
+  schoolId: string,
+  classId: string,
+  sectionId: string,
+  input: UpdateSectionSchema,
+): Promise<SectionListItem> => {
+
+  const klass = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+  if (!klass) throw notFound('Class not found', 'CLASS_NOT_FOUND');
+
+  const existing = await prisma.section.findFirst({ where: { id: sectionId, classId } });
+  if (!existing) throw notFound('Section not found', 'SECTION_NOT_FOUND');
+
+  if (input.name) {
+    const nameTaken = await prisma.section.findFirst({
+      where: { classId, name: input.name, NOT: { id: sectionId } },
+    });
+    if (nameTaken) throw conflict('A section with this name already exists in this class', 'SECTION_NAME_TAKEN');
+  }
+
+  if (input.classTeacherId) {
+    const teacher = await prisma.teacher.findFirst({ where: { id: input.classTeacherId, schoolId } });
+    if (!teacher) throw notFound('Teacher not found', 'TEACHER_NOT_FOUND');
+
+    const assignedElsewhere = await prisma.section.findFirst({
+      where: { classTeacherId: input.classTeacherId, NOT: { id: sectionId } },
+    });
+    if (assignedElsewhere) {
+      throw conflict('This teacher is already the Class Teacher of another section', 'TEACHER_ALREADY_CLASS_TEACHER');
+    }
+  }
+
+  const section = await prisma.section.update({
+    where:   { id: sectionId },
+    data:    input,
+    include: { classTeacher: { include: { user: true } }, _count: { select: { students: true } } },
+  });
+
+  return {
+    id:               section.id,
+    name:             section.name,
+    classId:          section.classId,
+    classTeacherId:   section.classTeacherId,
+    classTeacherName: section.classTeacher?.user.name ?? null,
+    capacity:         section.capacity,
+    studentCount:     section._count.students,
+  };
+};
+
+// ── Delete a Section ───────────────────────────────────────────
+// Blocked if it has enrolled students.
+export const deleteSection = async (schoolId: string, classId: string, sectionId: string): Promise<void> => {
+  const klass = await prisma.class.findFirst({ where: { id: classId, schoolId } });
+  if (!klass) throw notFound('Class not found', 'CLASS_NOT_FOUND');
+
+  const existing = await prisma.section.findFirst({ where: { id: sectionId, classId } });
+  if (!existing) throw notFound('Section not found', 'SECTION_NOT_FOUND');
+
+  const studentCount = await prisma.student.count({ where: { sectionId } });
+  if (studentCount > 0) {
+    throw conflict('This section has enrolled students — remove/reassign them first', 'SECTION_HAS_STUDENTS');
+  }
+
+  await prisma.section.delete({ where: { id: sectionId } });
 };

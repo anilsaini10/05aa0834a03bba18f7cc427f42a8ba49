@@ -24,7 +24,11 @@
     { "key": "teacherEmail", "value": "priya.singh@example.com", "type": "string" },
     { "key": "teacherId", "value": "", "type": "string" },
     { "key": "studentId", "value": "", "type": "string" },
-    { "key": "announcementId", "value": "", "type": "string" }
+    { "key": "announcementId", "value": "", "type": "string" },
+    { "key": "eventId", "value": "", "type": "string" },
+    { "key": "examId", "value": "", "type": "string" },
+    { "key": "resultId", "value": "", "type": "string" },
+    { "key": "recordId", "value": "", "type": "string" }
   ],
   "item": [
     {
@@ -879,6 +883,442 @@
       ]
     },
     {
+      "name": "Admin - Events",
+      "item": [
+        {
+          "name": "Create Event - Single Day (HOLIDAY)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventId', body.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Diwali Holiday\",\n  \"eventType\": \"HOLIDAY\",\n  \"startDate\": \"2026-11-08\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events"]
+            },
+            "description": "Requires ADMIN. eventType: HOLIDAY | EXAM | MEETING | ACTIVITY | OTHER. endDate is optional — if omitted, defaults to startDate (single-day event). audience defaults to ALL (ALL|TEACHER|PARENT), same semantics as Announcements. Saves the created id to {{eventId}}."
+          }
+        },
+        {
+          "name": "Create Event - Multi Day (EXAM)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Final Exams\",\n  \"description\": \"All subjects final exam schedule.\",\n  \"eventType\": \"EXAM\",\n  \"startDate\": \"2026-12-01\",\n  \"endDate\": \"2026-12-10\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events"]
+            },
+            "description": "endDate must be on or after startDate — 400 VALIDATION_ERROR otherwise."
+          }
+        },
+        {
+          "name": "Create Event (audience=TEACHER)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Staff Meeting\",\n  \"eventType\": \"MEETING\",\n  \"audience\": \"TEACHER\",\n  \"startDate\": \"2026-07-20\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events"]
+            },
+            "description": "Non-ALL audience example — same ALL|TEACHER|PARENT targeting as Announcements."
+          }
+        },
+        {
+          "name": "Create Event - Invalid Date Range (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad Event\",\n  \"eventType\": \"OTHER\",\n  \"startDate\": \"2026-12-10\",\n  \"endDate\": \"2026-12-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events"]
+            }
+          }
+        },
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events?page=1&pageSize=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "search", "value": "exam", "disabled": true },
+                { "key": "eventType", "value": "EXAM", "disabled": true },
+                { "key": "audience", "value": "TEACHER", "disabled": true },
+                { "key": "from", "value": "2026-12-01", "disabled": true },
+                { "key": "to", "value": "2026-12-31", "disabled": true }
+              ]
+            },
+            "description": "Requires ADMIN. Sorted chronologically by startDate. search matches title/description. eventType/audience filter by exact value. from/to filter to events whose [startDate, endDate] range OVERLAPS the given window (e.g. from=2026-12-01&to=2026-12-31 returns any event touching December — useful for a calendar month view)."
+          }
+        },
+        {
+          "name": "Get Event Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events", "{{eventId}}"]
+            },
+            "description": "Requires ADMIN. 404 EVENT_NOT_FOUND if the id doesn't exist or belongs to a different school."
+          }
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Diwali Break\",\n  \"description\": \"School closed for Diwali festival.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events", "{{eventId}}"]
+            },
+            "description": "Requires ADMIN. Partial update — send only the field(s) you want to change. At least one required, 400 VALIDATION_ERROR if body is empty. If you change only startDate or only endDate, it's cross-checked against the OTHER field's existing stored value — 400 INVALID_DATE_RANGE if the merged result would be invalid."
+          }
+        },
+        {
+          "name": "Delete Event",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "events", "{{eventId}}"]
+            },
+            "description": "Requires ADMIN. Hard delete — cannot be undone. 404 EVENT_NOT_FOUND if already deleted or belongs to a different school."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Exams",
+      "item": [
+        {
+          "name": "Create Exam (with classes + maxMarks)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('examId', body.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Mid Term Exam\",\n  \"description\": \"Mid-term for all classes\",\n  \"startDate\": \"2026-09-01\",\n  \"endDate\": \"2026-09-10\",\n  \"classes\": [\n    { \"classId\": \"{{classId}}\", \"maxMarks\": 100 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams"]
+            },
+            "description": "Requires ADMIN. `classes` is required, at least one entry — each with its own maxMarks (different classes can have different maxMarks for the same exam). startDate/endDate are optional. 404 CLASS_NOT_FOUND if any classId is invalid/belongs to another school. Saves the created id to {{examId}}."
+          }
+        },
+        {
+          "name": "List Exams",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams?page=1&pageSize=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "search", "value": "mid term", "disabled": true }
+              ]
+            },
+            "description": "Requires ADMIN. search matches title/description."
+          }
+        },
+        {
+          "name": "Get Exam Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}"]
+            },
+            "description": "Requires ADMIN. 404 EXAM_NOT_FOUND if the id doesn't exist or belongs to a different school."
+          }
+        },
+        {
+          "name": "Update Exam",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Mid Term Exam (Revised)\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}"]
+            },
+            "description": "Requires ADMIN. Updates title/description/startDate/endDate only — NOT the assigned classes (use the Classes sub-endpoints below for that). At least one field required. 400 INVALID_DATE_RANGE if the merged start/end dates would be invalid."
+          }
+        },
+        {
+          "name": "Add Class to Exam",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"classId\": \"{{classId}}\",\n  \"maxMarks\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "classes"]
+            },
+            "description": "Requires ADMIN. Assigns an additional class to this exam. 404 CLASS_NOT_FOUND, 409 EXAM_CLASS_ALREADY_ASSIGNED if this class is already part of the exam."
+          }
+        },
+        {
+          "name": "List Classes for Exam (with grading progress)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "classes"]
+            },
+            "description": "Requires ADMIN. Returns each class assigned to this exam with maxMarks, total studentCount, and gradedCount (how many results have status=GRADED so far) — e.g. render as '12 / 30 graded'. This is step 2 of the flow: pick an exam, see its classes."
+          }
+        },
+        {
+          "name": "List Students in Exam's Class (step 3 of the flow)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/classes/{{classId}}/students?page=1&pageSize=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "classes", "{{classId}}", "students"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "15" },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Requires ADMIN. Tapping a class (from 'List Classes for Exam' above) lands here — every student in that class, each with `result` (their ExamResult for THIS exam) or `result: null` if not yet created/graded. Response also includes the class's `maxMarks` at the top level. 404 EXAM_CLASS_NOT_FOUND if classId isn't actually assigned to this exam."
+          }
+        },
+        {
+          "name": "Create Exam Result (grade a student)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('resultId', body.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"marksObtained\": 85,\n  \"grade\": \"A\",\n  \"remarks\": \"Excellent\",\n  \"status\": \"GRADED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/results",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "results"]
+            },
+            "description": "Requires ADMIN. status defaults to PENDING if omitted (PENDING | GRADED | ABSENT). 404 STUDENT_NOT_FOUND, 404 EXAM_CLASS_NOT_FOUND if the student's class isn't assigned to this exam, 409 RESULT_ALREADY_EXISTS if this student already has a result for this exam (use Update instead), 400 INVALID_MARKS if marksObtained exceeds that class's maxMarks. Saves the created id to {{resultId}}."
+          }
+        },
+        {
+          "name": "Create Exam Result - Duplicate (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"marksObtained\": 50\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/results",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "results"]
+            }
+          }
+        },
+        {
+          "name": "Get Exam Result Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/results/{{resultId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "results", "{{resultId}}"]
+            },
+            "description": "Requires ADMIN. 404 RESULT_NOT_FOUND if the id doesn't exist or belongs to a different exam."
+          }
+        },
+        {
+          "name": "Update Exam Result",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"marksObtained\": 90,\n  \"remarks\": \"Improved on recheck\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/results/{{resultId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "results", "{{resultId}}"]
+            },
+            "description": "Requires ADMIN. Any subset of marksObtained/grade/remarks/status — at least one required. 400 INVALID_MARKS if marksObtained would exceed the class's maxMarks."
+          }
+        },
+        {
+          "name": "Delete Exam Result",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/results/{{resultId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "results", "{{resultId}}"]
+            },
+            "description": "Requires ADMIN. The student reverts to result: null in the class's student list."
+          }
+        },
+        {
+          "name": "Remove Class from Exam",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}/classes/{{classId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}", "classes", "{{classId}}"]
+            },
+            "description": "Requires ADMIN. 409 EXAM_CLASS_HAS_RESULTS if any student in that class already has a result recorded for this exam — delete those results first. This is a deliberate safety guard against silently losing grading data."
+          }
+        },
+        {
+          "name": "Delete Exam",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/exams/{{examId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "exams", "{{examId}}"]
+            },
+            "description": "Requires ADMIN. Hard delete — cascades to remove ALL of this exam's class assignments AND every student's result for it. Cannot be undone."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Attendance Report",
+      "item": [
+        {
+          "name": "Class-wise Attendance Summary (today)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/attendance/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "attendance", "classes"]
+            },
+            "description": "Requires ADMIN. READ-ONLY report — no marking/editing here. date query param omitted = defaults to today. Returns EVERY class in the school (even ones with zero students or zero marked attendance that day) with present/absent/late/leave/total/percentage. NOTE: this backend currently has no attendance-MARKING endpoint anywhere (admin or teacher side) — until one exists, these counts will always be 0 in a fresh environment. Seed AttendanceRecord rows directly via Prisma to test with real data."
+          }
+        },
+        {
+          "name": "Class-wise Attendance Summary (specific date)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/attendance/classes?date=2026-07-14",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "attendance", "classes"],
+              "query": [{ "key": "date", "value": "2026-07-14" }]
+            },
+            "description": "date format: YYYY-MM-DD. 400 VALIDATION_ERROR if malformed."
+          }
+        },
+        {
+          "name": "Students in Class with Attendance Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/attendance/classes/{{classId}}/students?date=2026-07-14&page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "attendance", "classes", "{{classId}}", "students"],
+              "query": [
+                { "key": "date", "value": "2026-07-14" },
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Requires ADMIN. This is the drill-down after tapping a class in the summary above. Each item's `status` is one of PRESENT|ABSENT|LATE|LEAVE|HOLIDAY, or null if no attendance record exists yet for that student on that date ('Not marked'). Sorted by rollNo ascending. search matches name/admissionNo. 404 CLASS_NOT_FOUND if classId is invalid or belongs to another school."
+          }
+        }
+      ]
+    },
+    {
       "name": "Teacher (Self-Service)",
       "item": [
         {
@@ -973,6 +1413,72 @@
               ]
             },
             "description": "Requires TEACHER. Returns only announcements with audience=ALL or audience=TEACHER for this teacher's school — PARENT-only announcements are never included. Also excludes anything not yet published (publishAt in the future) or already expired (expiresAt in the past) — you only ever see currently-active ones here."
+          }
+        },
+        {
+          "name": "Get Section Attendance (for marking UI)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/attendance?sectionId={{sectionId}}&date=2026-07-14",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "attendance"],
+              "query": [
+                { "key": "sectionId", "value": "{{sectionId}}" },
+                { "key": "date", "value": "2026-07-14" }
+              ]
+            },
+            "description": "Requires TEACHER, and this teacher MUST be the Class Teacher of {{sectionId}} (Section.classTeacherId) — 403 NOT_CLASS_TEACHER otherwise, even if they teach a subject in that class. date optional, defaults to today. Returns every student in the section with their current status (or null = not marked) — use this to pre-fill the marking UI before submitting."
+          }
+        },
+        {
+          "name": "Mark/Update Attendance (bulk upsert)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sectionId\": \"{{sectionId}}\",\n  \"date\": \"2026-07-14\",\n  \"records\": [\n    { \"studentId\": \"{{studentId}}\", \"status\": \"PRESENT\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/attendance",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "attendance"]
+            },
+            "description": "Requires TEACHER + Class Teacher of sectionId. `records` is at least 1 {studentId, status}, status one of PRESENT|ABSENT|LATE|LEAVE|HOLIDAY. This is an UPSERT — re-submitting the same student+date just overwrites the status, so the same endpoint handles both first-time marking and later correction. 404 STUDENT_NOT_IN_SECTION if any studentId doesn't belong to sectionId. 403 NOT_CLASS_TEACHER if this teacher isn't the class teacher of sectionId."
+          }
+        },
+        {
+          "name": "Get Student Attendance History (date range)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/attendance/students/{{studentId}}?from=2026-06-15&to=2026-07-14",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "attendance", "students", "{{studentId}}"],
+              "query": [
+                { "key": "from", "value": "2026-06-15" },
+                { "key": "to", "value": "2026-07-14" }
+              ]
+            },
+            "description": "Requires TEACHER, and the student must be in a section this teacher is Class Teacher of (403 NOT_CLASS_TEACHER otherwise). from/to both optional — defaults to the last 30 days if omitted. Returns the raw records list (sorted by date ascending) PLUS a summary count (present/absent/late/leave/holiday) over that range."
+          }
+        },
+        {
+          "name": "Update a Single Attendance Record",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ABSENT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/attendance/{{recordId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "attendance", "{{recordId}}"]
+            },
+            "description": "Requires TEACHER + Class Teacher of the section that record belongs to. Use this to correct one specific day's record (e.g. inline-editing a row from the student history view) instead of re-submitting the whole bulk mark call. 404 RECORD_NOT_FOUND, 403 NOT_CLASS_TEACHER if the record belongs to a section this teacher doesn't own."
           }
         }
       ]
