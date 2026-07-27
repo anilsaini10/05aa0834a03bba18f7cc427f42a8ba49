@@ -1,10 +1,11 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, DayOfWeek } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { changeOwnPassword } from '../../shared/services/account.service';
 import {
   UpdateProfileSchema,
   ListMyStudentsQuerySchema,
   ListMyAnnouncementsQuerySchema,
+  ListMyEventsQuerySchema,
   GetSectionAttendanceQuerySchema,
   MarkAttendanceSchema,
   StudentAttendanceHistoryQuerySchema,
@@ -12,6 +13,11 @@ import {
   CreateHomeworkSchema,
   UpdateHomeworkSchema,
   ListMyHomeworkQuerySchema,
+  ListMyAttendanceRecordsQuerySchema,
+  ListLeaveRequestsQuerySchema,
+  ReviewLeaveRequestSchema,
+  ApplyMyLeaveSchema,
+  ListMyLeaveQuerySchema,
 } from './teacher.validation';
 
 // Attendance is tracked per calendar day; normalize to date-only (midnight UTC)
@@ -35,10 +41,23 @@ const forbidden = (message: string, code: string) => {
   return err;
 };
 
+const conflict = (message: string, code: string) => {
+  const err = new Error(message) as any;
+  err.code       = code;
+  err.statusCode = 409;
+  return err;
+};
+
+const datesInRange = (from: Date, to: Date): Date[] => {
+  const dates: Date[] = [];
+  for (let d = from; d <= to; d = daysBefore(d, -1)) dates.push(d);
+  return dates;
+};
+
 const TEACHER_INCLUDE = {
   user:              true,
   subjects:          { include: { subject: true, class: true } },
-  sectionsAsTeacher: true,
+  sectionsAsTeacher: { include: { class: true } },
 };
 
 const getTeacherByUserId = async (userId: string) => {
@@ -67,8 +86,18 @@ export const getProfile = async (userId: string) => {
       classId:   ts.class.id,
       className: ts.class.name,
     })),
+    classTeacherOf: teacher.sectionsAsTeacher.map(s => ({
+      sectionId:   s.id,
+      sectionName: s.name,
+      classId:     s.classId,
+      className:   s.class.name,
+    })),
     joiningDate:      teacher.joiningDate,
     salary:           teacher.salary,
+    qualification:    teacher.qualification,
+    experienceYears:  teacher.experienceYears,
+    experienceMonths: teacher.experienceMonths,
+    subjectsTaught:   teacher.subjectsTaught,
     status:           teacher.status,
     performanceScore: teacher.performanceScore,
   };
@@ -203,7 +232,7 @@ export const listMyStudents = async (userId: string, query: ListMyStudentsQueryS
 // PARENT-only announcements.
 export const listMyAnnouncements = async (userId: string, query: ListMyAnnouncementsQuerySchema) => {
   const teacher = await getTeacherByUserId(userId);
-  const { page, pageSize, search } = query;
+  const { page, pageSize, search, from, to } = query;
   const now = new Date();
 
   const where: Prisma.AnnouncementWhereInput = {
@@ -212,6 +241,10 @@ export const listMyAnnouncements = async (userId: string, query: ListMyAnnouncem
     AND: [
       { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
       { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+      // Announcements without a specific eventDate (general notices) are never
+      // date-filtered out — only ones tied to a date are checked against from/to.
+      ...(from ? [{ OR: [{ eventDate: null }, { eventDate: { gte: from } }] }] : []),
+      ...(to   ? [{ OR: [{ eventDate: null }, { eventDate: { lte: to } }] }] : []),
     ],
     ...(search ? {
       OR: [
@@ -248,6 +281,155 @@ export const listMyAnnouncements = async (userId: string, query: ListMyAnnouncem
     total,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+};
+
+// ── GET /teacher/events ────────────────────────────────────────
+// Only events meant for TEACHER (or everyone, ALL) — never PARENT-only.
+export const listMyEvents = async (userId: string, query: ListMyEventsQuerySchema) => {
+  const teacher = await getTeacherByUserId(userId);
+  const { page, pageSize, search, eventType, from, to } = query;
+
+  const where: Prisma.EventWhereInput = {
+    schoolId: teacher.schoolId,
+    audience: { in: ['ALL', 'TEACHER'] },
+    ...(eventType ? { eventType } : {}),
+    ...(from ? { endDate: { gte: from } } : {}),
+    ...(to   ? { startDate: { lte: to } } : {}),
+    ...(search ? {
+      OR: [
+        { title:       { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ],
+    } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.event.findMany({
+      where,
+      include:  { createdByUser: true },
+      orderBy:  { startDate: 'asc' },
+      skip:     (page - 1) * pageSize,
+      take:     pageSize,
+    }),
+    prisma.event.count({ where }),
+  ]);
+
+  return {
+    items: items.map(e => ({
+      id:          e.id,
+      title:       e.title,
+      description: e.description,
+      eventType:   e.eventType,
+      audience:    e.audience,
+      startDate:   e.startDate,
+      endDate:     e.endDate,
+      createdBy:   { id: e.createdByUser.id, name: e.createdByUser.name },
+      createdAt:   e.createdAt,
+      updatedAt:   e.updatedAt,
+    })),
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+};
+
+// ════════════════════════════════════════════════════════════
+// My Schedule — the logged-in teacher's own periods, wherever they
+// teach (any section/class via ClassSchedule.teacherId), never scoped
+// by class-teacher-of-section like Attendance is.
+// ════════════════════════════════════════════════════════════
+
+const WEEK_DAYS: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+const DAY_BY_JS_INDEX: DayOfWeek[] = [
+  'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY',
+];
+
+const MY_SCHEDULE_INCLUDE = { class: true, section: true, subject: true };
+
+const toMyScheduleEntry = (s: any) => ({
+  id:          s.id,
+  day:         s.day,
+  type:        s.type,
+  periodNo:    s.periodNo,
+  classId:     s.classId,
+  className:   s.class.name,
+  sectionId:   s.sectionId,
+  sectionName: s.section.name,
+  subjectId:   s.subjectId,
+  subjectName: s.subject?.name ?? null,
+  roomNo:      s.roomNo,
+  title:       s.title,
+  startTime:   s.startTime,
+  endTime:     s.endTime,
+});
+
+// ── GET /teacher/dashboard ───────────────────────────────────────
+// attendance[] covers only sections this teacher is Class Teacher of
+// (same scope as the attendance-marking endpoints below) — a teacher
+// who just teaches a subject period, without being homeroom in-charge,
+// never marks attendance for that section, so it's excluded here too.
+export const getDashboardStats = async (userId: string) => {
+  const teacher = await getTeacherByUserId(userId);
+  const day  = DAY_BY_JS_INDEX[new Date().getDay()];
+  const date = todayDateOnly();
+
+  const todayClassesCount = await prisma.classSchedule.count({
+    where: { teacherId: teacher.id, day },
+  });
+
+  const attendance = await Promise.all(teacher.sectionsAsTeacher.map(async (section) => {
+    const [totalStudents, markedCount] = await Promise.all([
+      prisma.student.count({ where: { sectionId: section.id, status: 'ACTIVE' } }),
+      prisma.attendanceRecord.count({ where: { sectionId: section.id, date } }),
+    ]);
+    return {
+      sectionId:   section.id,
+      sectionName: section.name,
+      classId:     section.classId,
+      className:   section.class.name,
+      totalStudents,
+      markedCount,
+      isMarked:    totalStudents > 0 && markedCount >= totalStudents,
+    };
+  }));
+
+  return { date: toDateString(date), todayClassesCount, attendance };
+};
+
+// ── GET /teacher/schedule/today ─────────────────────────────────
+export const getTodaySchedule = async (userId: string) => {
+  const teacher = await getTeacherByUserId(userId);
+  const day = DAY_BY_JS_INDEX[new Date().getDay()];
+
+  const entries = await prisma.classSchedule.findMany({
+    where:   { teacherId: teacher.id, day },
+    include: MY_SCHEDULE_INCLUDE,
+    orderBy: { periodNo: 'asc' },
+  });
+
+  return {
+    day,
+    date:    toDateString(new Date()),
+    periods: entries.map(toMyScheduleEntry),
+  };
+};
+
+// ── GET /teacher/schedule/week — Monday to Saturday, grouped by day ──
+export const getWeekSchedule = async (userId: string) => {
+  const teacher = await getTeacherByUserId(userId);
+
+  const entries = await prisma.classSchedule.findMany({
+    where:   { teacherId: teacher.id, day: { in: WEEK_DAYS } },
+    include: MY_SCHEDULE_INCLUDE,
+    orderBy: { periodNo: 'asc' },
+  });
+
+  const timetable: Record<string, ReturnType<typeof toMyScheduleEntry>[]> = {};
+  for (const d of WEEK_DAYS) timetable[d] = [];
+  for (const e of entries) timetable[e.day].push(toMyScheduleEntry(e));
+
+  return { teacherId: teacher.id, timetable };
 };
 
 // ════════════════════════════════════════════════════════════
@@ -546,4 +728,229 @@ export const deleteHomework = async (userId: string, homeworkId: string): Promis
   await requireOwnHomework(userId, teacher.schoolId, homeworkId);
 
   await prisma.homework.delete({ where: { id: homeworkId } });
+};
+
+// ════════════════════════════════════════════════════════════
+// My own attendance — read-only. Admin marks/corrects staff
+// attendance (src/features/admin/teacherAttendance); a teacher can
+// only view their own history here, never anyone else's.
+// ════════════════════════════════════════════════════════════
+
+// ── GET /teacher/my-attendance ────────────────────────────────────
+export const listMyAttendanceRecords = async (userId: string, query: ListMyAttendanceRecordsQuerySchema) => {
+  const teacher = await getTeacherByUserId(userId);
+  const { page, pageSize, date, from, to, status } = query;
+
+  const dateFilter = date
+    ? toDateOnly(date)
+    : (from || to)
+      ? {
+          ...(from ? { gte: toDateOnly(from) } : {}),
+          ...(to   ? { lte: toDateOnly(to) }   : {}),
+        }
+      : undefined;
+
+  const where: Prisma.TeacherAttendanceRecordWhereInput = {
+    teacherId: teacher.id,
+    ...(status ? { status } : {}),
+    ...(dateFilter ? { date: dateFilter } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.teacherAttendanceRecord.findMany({
+      where,
+      include: { markedByUser: true },
+      orderBy: { date: 'desc' },
+      skip:    (page - 1) * pageSize,
+      take:    pageSize,
+    }),
+    prisma.teacherAttendanceRecord.count({ where }),
+  ]);
+
+  return {
+    items: items.map(r => ({
+      id:        r.id,
+      date:      toDateString(r.date),
+      status:    r.status,
+      markedBy:  { id: r.markedByUser.id, name: r.markedByUser.name },
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+};
+
+// ════════════════════════════════════════════════════════════
+// Leave requests — review only (applying is a parent action, in
+// src/features/students). Scoped to sections this teacher is the
+// Class Teacher of, same restriction as Attendance marking.
+// ════════════════════════════════════════════════════════════
+
+const LEAVE_INCLUDE = {
+  student:        true,
+  class:          true,
+  section:        true,
+  appliedByUser:  true,
+  reviewedByUser: true,
+};
+
+const toLeaveResponse = (l: any) => ({
+  id:            l.id,
+  studentId:     l.studentId,
+  studentName:   l.student.name,
+  classId:       l.classId,
+  className:     l.class.name,
+  sectionId:     l.sectionId,
+  sectionName:   l.section.name,
+  fromDate:      toDateString(l.fromDate),
+  toDate:        toDateString(l.toDate),
+  reason:        l.reason,
+  status:        l.status,
+  appliedBy:     { id: l.appliedByUser.id, name: l.appliedByUser.name },
+  reviewedBy:    l.reviewedByUser ? { id: l.reviewedByUser.id, name: l.reviewedByUser.name } : null,
+  reviewedAt:    l.reviewedAt,
+  reviewRemarks: l.reviewRemarks,
+  createdAt:     l.createdAt,
+  updatedAt:     l.updatedAt,
+});
+
+// ── GET /teacher/leave — requests for sections I'm Class Teacher of ─
+export const listLeaveRequests = async (userId: string, query: ListLeaveRequestsQuerySchema) => {
+  const teacher = await getTeacherByUserId(userId);
+  const mySectionIds = teacher.sectionsAsTeacher.map(s => s.id);
+
+  const leaves = await prisma.leaveRequest.findMany({
+    where:   { sectionId: { in: mySectionIds }, ...(query.status ? { status: query.status } : {}) },
+    include: LEAVE_INCLUDE,
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return leaves.map(toLeaveResponse);
+};
+
+// ── PATCH /teacher/leave/:leaveId — approve/reject ───────────────
+// Approving auto-marks AttendanceRecord as LEAVE for every date in
+// [fromDate, toDate], overwriting whatever was there before — the
+// same "correction" semantics markAttendance already uses.
+export const reviewLeaveRequest = async (
+  userId: string,
+  leaveId: string,
+  input: ReviewLeaveRequestSchema,
+) => {
+  const teacher = await getTeacherByUserId(userId);
+  const mySectionIds = new Set(teacher.sectionsAsTeacher.map(s => s.id));
+
+  const leave = await prisma.leaveRequest.findUnique({ where: { id: leaveId } });
+  if (!leave) throw notFound('Leave request not found', 'LEAVE_NOT_FOUND');
+  if (!mySectionIds.has(leave.sectionId)) {
+    throw forbidden('You are not the Class Teacher of this section', 'NOT_CLASS_TEACHER');
+  }
+  if (leave.status !== 'PENDING') {
+    throw conflict('This leave request has already been reviewed', 'LEAVE_ALREADY_REVIEWED');
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.leaveRequest.update({
+      where: { id: leaveId },
+      data: {
+        status:        input.status,
+        reviewedBy:    userId,
+        reviewedAt:    new Date(),
+        reviewRemarks: input.reviewRemarks ?? null,
+      },
+      include: LEAVE_INCLUDE,
+    });
+
+    if (input.status === 'APPROVED') {
+      const dates = datesInRange(toDateOnly(leave.fromDate), toDateOnly(leave.toDate));
+      await Promise.all(dates.map(date =>
+        tx.attendanceRecord.upsert({
+          where:  { studentId_date: { studentId: leave.studentId, date } },
+          update: { status: 'LEAVE', markedBy: userId },
+          create: {
+            studentId: leave.studentId,
+            date,
+            status:    'LEAVE',
+            markedBy:  userId,
+            classId:   leave.classId,
+            sectionId: leave.sectionId,
+            schoolId:  leave.schoolId,
+          },
+        }),
+      ));
+    }
+
+    return result;
+  });
+
+  return toLeaveResponse(updated);
+};
+
+// ════════════════════════════════════════════════════════════
+// My own leave — a teacher applying for their own time off. Only
+// Admin reviews this (no "class teacher of the teacher" concept),
+// and there's no attendance record to auto-mark since staff
+// attendance isn't tracked in this system.
+// ════════════════════════════════════════════════════════════
+
+const MY_LEAVE_INCLUDE = { reviewedByUser: true };
+
+const toMyLeaveResponse = (l: any) => ({
+  id:            l.id,
+  fromDate:      toDateString(l.fromDate),
+  toDate:        toDateString(l.toDate),
+  reason:        l.reason,
+  status:        l.status,
+  reviewedBy:    l.reviewedByUser ? { id: l.reviewedByUser.id, name: l.reviewedByUser.name } : null,
+  reviewedAt:    l.reviewedAt,
+  reviewRemarks: l.reviewRemarks,
+  createdAt:     l.createdAt,
+  updatedAt:     l.updatedAt,
+});
+
+// ── POST /teacher/my-leave ───────────────────────────────────────
+export const applyMyLeave = async (userId: string, input: ApplyMyLeaveSchema) => {
+  const teacher = await getTeacherByUserId(userId);
+
+  const leave = await prisma.teacherLeaveRequest.create({
+    data: {
+      schoolId:  teacher.schoolId,
+      teacherId: teacher.id,
+      fromDate:  toDateOnly(input.fromDate),
+      toDate:    toDateOnly(input.toDate),
+      reason:    input.reason,
+    },
+    include: MY_LEAVE_INCLUDE,
+  });
+
+  return toMyLeaveResponse(leave);
+};
+
+// ── GET /teacher/my-leave ─────────────────────────────────────────
+export const listMyLeaveHistory = async (userId: string, query: ListMyLeaveQuerySchema) => {
+  const teacher = await getTeacherByUserId(userId);
+
+  const leaves = await prisma.teacherLeaveRequest.findMany({
+    where:   { teacherId: teacher.id, ...(query.status ? { status: query.status } : {}) },
+    include: MY_LEAVE_INCLUDE,
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return leaves.map(toMyLeaveResponse);
+};
+
+// ── DELETE /teacher/my-leave/:leaveId — cancel while still PENDING ──
+export const cancelMyLeave = async (userId: string, leaveId: string): Promise<void> => {
+  const teacher = await getTeacherByUserId(userId);
+
+  const leave = await prisma.teacherLeaveRequest.findFirst({ where: { id: leaveId, teacherId: teacher.id } });
+  if (!leave) throw notFound('Leave request not found', 'LEAVE_NOT_FOUND');
+  if (leave.status !== 'PENDING') {
+    throw conflict('Only pending leave requests can be cancelled', 'LEAVE_ALREADY_REVIEWED');
+  }
+
+  await prisma.teacherLeaveRequest.delete({ where: { id: leaveId } });
 };

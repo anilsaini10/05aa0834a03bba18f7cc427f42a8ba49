@@ -15,6 +15,25 @@ export const createStudentSchema = z.object({
   address:     z.string().max(300).optional(),
 });
 
+export const updateStudentSchema = z.object({
+  name:        z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
+  gender:      z.nativeEnum(Gender).optional(),
+  dateOfBirth: z.coerce.date({ errorMap: () => ({ message: 'Invalid date of birth' }) }).optional(),
+  classId:     z.string().uuid('Invalid class id').optional(),
+  sectionId:   z.string().uuid('Invalid section id').optional(),
+  rollNo:      z.coerce.number().int().positive('Roll number must be a positive integer').optional(),
+  parentName:  z.string().min(2, 'Parent name must be at least 2 characters').max(100).optional(),
+  parentPhone: z.string().min(10).max(15).optional(),
+  parentEmail: z.string().email('Invalid parent email address').optional(),
+  bloodGroup:  z.string().max(10).optional(),
+  address:     z.string().max(300).optional(),
+  status:      z.enum(['ACTIVE', 'INACTIVE']).optional(),
+})
+  .refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' })
+  .refine(data => !data.classId || data.sectionId, {
+    message: 'sectionId is required when changing classId', path: ['sectionId'],
+  });
+
 export const listStudentsQuerySchema = z.object({
   page:      z.coerce.number().int().positive().default(1),
   pageSize:  z.coerce.number().int().positive().max(100).default(15),
@@ -24,4 +43,5 @@ export const listStudentsQuerySchema = z.object({
 });
 
 export type CreateStudentSchema     = z.infer<typeof createStudentSchema>;
+export type UpdateStudentSchema     = z.infer<typeof updateStudentSchema>;
 export type ListStudentsQuerySchema = z.infer<typeof listStudentsQuerySchema>;

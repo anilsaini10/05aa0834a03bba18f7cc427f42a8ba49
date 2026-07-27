@@ -1,5 +1,6 @@
 import { Prisma, Event, User } from '@prisma/client';
 import { prisma } from '../../config/db';
+import { notifyAudience } from '../notifications/notifications.service';
 import {
   CreateEventSchema,
   UpdateEventSchema,
@@ -66,6 +67,13 @@ export const createEvent = async (
       endDate:     input.endDate,
     },
     include: { createdByUser: true },
+  });
+
+  // Fire-and-forget — never awaited, never throws (see notifyAudience).
+  notifyAudience(schoolId, event.audience, {
+    title: event.title,
+    body:  event.description ?? event.eventType,
+    data:  { type: 'EVENT', eventId: event.id },
   });
 
   return toResponse(event);
@@ -140,6 +148,13 @@ export const updateEvent = async (
     where:   { id },
     data:    input,
     include: { createdByUser: true },
+  });
+
+  // Fire-and-forget — never awaited, never throws (see notifyAudience).
+  notifyAudience(schoolId, event.audience, {
+    title: event.title,
+    body:  event.description ?? event.eventType,
+    data:  { type: 'EVENT', eventId: event.id },
   });
 
   return toResponse(event);

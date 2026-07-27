@@ -56,12 +56,33 @@ enum AttendanceStatus {
   HOLIDAY
 }
 
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum HomeworkType {
   ASSIGNMENT
   PROJECT
   READING
   PRACTICE
   OTHER
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum ScheduleType {
+  CLASS_PERIOD
+  BREAK
 }
 
 // ── User ──────────────────────────────────────────────────────
@@ -87,6 +108,11 @@ model User {
   examsCreated          Exam[]
   attendanceMarked      AttendanceRecord[]
   homeworkCreated       Homework[]
+  classSchedulesCreated ClassSchedule[]
+  leaveRequestsApplied  LeaveRequest[]    @relation("LeaveAppliedBy")
+  leaveRequestsReviewed LeaveRequest[]    @relation("LeaveReviewedBy")
+  teacherLeaveRequestsReviewed TeacherLeaveRequest[] @relation("TeacherLeaveReviewedBy")
+  teacherAttendanceMarked      TeacherAttendanceRecord[]
 
   @@index([schoolId])
   @@map("users")
@@ -109,6 +135,11 @@ model School {
   exams             Exam[]
   attendanceRecords AttendanceRecord[]
   homework          Homework[]
+  classSchedules    ClassSchedule[]
+  leaveRequests     LeaveRequest[]
+  teacherLeaveRequests TeacherLeaveRequest[]
+  teacherAttendanceRecords TeacherAttendanceRecord[]
+  staff             Staff[]
 
   @@map("schools")
 }
@@ -265,6 +296,42 @@ model Homework {
   @@map("homework")
 }
 
+// ── ClassSchedule ─────────────────────────────────────────────────
+// One row = one period (or break) for a section, on a given day of
+// the week. "School timing" and "teacher schedule" are NOT separate
+// tables — both are just views/queries over this same table (derived,
+// not stored, so there's nothing to keep in sync).
+model ClassSchedule {
+  id            String       @id @default(uuid())
+  schoolId      String
+  school        School       @relation(fields: [schoolId], references: [id])
+  classId       String
+  class         Class        @relation(fields: [classId], references: [id])
+  sectionId     String
+  section       Section      @relation(fields: [sectionId], references: [id])
+  day           DayOfWeek
+  type          ScheduleType
+  periodNo      Int
+  subjectId     String?
+  subject       Subject?     @relation(fields: [subjectId], references: [id])
+  teacherId     String?
+  teacher       Teacher?     @relation(fields: [teacherId], references: [id])
+  roomNo        String?
+  title         String?
+  startTime     String       // "HH:MM", 24-hour, no date component
+  endTime       String       // "HH:MM", 24-hour, no date component
+  createdBy     String
+  createdByUser User         @relation(fields: [createdBy], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([sectionId, day, periodNo])
+  @@index([schoolId])
+  @@index([teacherId, day])
+  @@index([roomNo, day])
+  @@map("class_schedules")
+}
+
 // ── RefreshToken ───────────────────────────────────────────────
 model RefreshToken {
   id         String   @id @default(uuid())
@@ -307,6 +374,8 @@ model Class {
   examResults       ExamResult[]
   attendanceRecords AttendanceRecord[]
   homework          Homework[]
+  classSchedules    ClassSchedule[]
+  leaveRequests     LeaveRequest[]
   createdAt         DateTime           @default(now())
 
   @@unique([schoolId, name])
@@ -325,6 +394,8 @@ model Section {
   students       Student[]
   attendanceRecords AttendanceRecord[]
   homework       Homework[]
+  classSchedules ClassSchedule[]
+  leaveRequests  LeaveRequest[]
 
   @@unique([classId, name])
   @@map("sections")
@@ -339,6 +410,7 @@ model Subject {
   teachers TeacherSubject[]
   classes  ClassSubject[]
   homework Homework[]
+  classSchedules ClassSchedule[]
 
   @@unique([schoolId, name])
   @@map("subjects")
@@ -381,6 +453,7 @@ model Student {
   school               School   @relation(fields: [schoolId], references: [id])
   examResults          ExamResult[]
   attendanceRecords    AttendanceRecord[]
+  leaveRequests        LeaveRequest[]
   createdAt            DateTime @default(now())
 
   @@index([schoolId])
@@ -396,12 +469,22 @@ model Teacher {
   gender            Gender
   joiningDate       DateTime
   salary            Float
+  qualification     String           @default("")
+  experienceYears   Int              @default(0)
+  experienceMonths  Int              @default(0)
+  // Subjects this teacher is generally qualified to teach — a plain name
+  // list, not tied to any class. Actual class+subject scheduling
+  // assignments still live in TeacherSubject (via assign-subject endpoint).
+  subjectsTaught    String[]         @default([])
   status            String           @default("ACTIVE")
   performanceScore  Float            @default(0)
   schoolId          String
   school            School           @relation(fields: [schoolId], references: [id])
   subjects          TeacherSubject[]
   sectionsAsTeacher Section[]
+  classSchedules    ClassSchedule[]
+  leaveRequests     TeacherLeaveRequest[]
+  attendanceRecords TeacherAttendanceRecord[]
 
   @@index([schoolId])
   @@map("teachers")
@@ -419,4 +502,113 @@ model TeacherSubject {
 
   @@id([teacherId, subjectId, classId])
   @@map("teacher_subjects")
+}
+
+// ── LeaveRequest ──────────────────────────────────────────────
+// A parent applies for their child's leave; either the Class Teacher
+// of the section or an Admin can approve/reject. Approval auto-marks
+// AttendanceRecord as LEAVE for every date in [fromDate, toDate].
+model LeaveRequest {
+  id             String       @id @default(uuid())
+  schoolId       String
+  school         School       @relation(fields: [schoolId], references: [id])
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  classId        String
+  class          Class        @relation(fields: [classId], references: [id])
+  sectionId      String
+  section        Section      @relation(fields: [sectionId], references: [id])
+  fromDate       DateTime     @db.Date
+  toDate         DateTime     @db.Date
+  reason         String
+  status         LeaveStatus  @default(PENDING)
+  appliedBy      String
+  appliedByUser  User         @relation("LeaveAppliedBy", fields: [appliedBy], references: [id])
+  reviewedBy     String?
+  reviewedByUser User?        @relation("LeaveReviewedBy", fields: [reviewedBy], references: [id])
+  reviewedAt     DateTime?
+  reviewRemarks  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([sectionId, status])
+  @@map("leave_requests")
+}
+
+// ── TeacherLeaveRequest ───────────────────────────────────────
+// A teacher's own leave — separate from LeaveRequest (student leave)
+// since there's no student/class/section context here, only Admin
+// reviews it (no "class teacher of the teacher" concept), and there's
+// no attendance record to auto-mark (staff attendance isn't tracked).
+model TeacherLeaveRequest {
+  id             String      @id @default(uuid())
+  schoolId       String
+  school         School      @relation(fields: [schoolId], references: [id])
+  teacherId      String
+  teacher        Teacher     @relation(fields: [teacherId], references: [id])
+  fromDate       DateTime    @db.Date
+  toDate         DateTime    @db.Date
+  reason         String
+  status         LeaveStatus @default(PENDING)
+  reviewedBy     String?
+  reviewedByUser User?       @relation("TeacherLeaveReviewedBy", fields: [reviewedBy], references: [id])
+  reviewedAt     DateTime?
+  reviewRemarks  String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([schoolId])
+  @@index([teacherId])
+  @@map("teacher_leave_requests")
+}
+
+// ── TeacherAttendanceRecord ───────────────────────────────────
+// Staff attendance — ADMIN-only (no "class teacher of the teacher"
+// concept). One row per teacher per calendar day, same AttendanceStatus
+// enum as student attendance so both share the same status vocabulary.
+model TeacherAttendanceRecord {
+  id           String           @id @default(uuid())
+  schoolId     String
+  school       School           @relation(fields: [schoolId], references: [id])
+  teacherId    String
+  teacher      Teacher          @relation(fields: [teacherId], references: [id])
+  date         DateTime         @db.Date
+  status       AttendanceStatus
+  markedBy     String
+  markedByUser User             @relation(fields: [markedBy], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([teacherId, date])
+  @@index([schoolId, date])
+  @@map("teacher_attendance_records")
+}
+
+// ── Staff ─────────────────────────────────────────────────────
+// Non-teaching staff (accountant, librarian, driver, peon, etc.) —
+// a plain record managed by Admin, no login/User account (unlike
+// Teacher). designation is free text since titles vary by school.
+model Staff {
+  id                String   @id @default(uuid())
+  employeeId        String
+  name              String
+  email             String?
+  phone             String
+  gender            Gender
+  designation       String
+  salary            Float
+  qualification     String   @default("")
+  experienceYears   Int      @default(0)
+  experienceMonths  Int      @default(0)
+  joiningDate       DateTime
+  status            String   @default("ACTIVE")
+  schoolId          String
+  school            School   @relation(fields: [schoolId], references: [id])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([schoolId])
+  @@map("staff")
 }

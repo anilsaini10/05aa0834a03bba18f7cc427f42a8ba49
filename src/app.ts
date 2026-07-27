@@ -14,6 +14,11 @@ import announcementRoutes  from './features/admin/announcements/announcements.ro
 import eventRoutes         from './features/events/events.routes';
 import examRoutes          from './features/admin/exams/exams.routes';
 import attendanceReportRoutes from './features/admin/attendanceReport/attendanceReport.routes';
+import classScheduleRoutes from './features/admin/classSchedule/classSchedule.routes';
+import leaveRoutes         from './features/admin/leave/leave.routes';
+import teacherAttendanceRoutes from './features/admin/teacherAttendance/teacherAttendance.routes';
+import staffRoutes         from './features/admin/staff/staff.routes';
+import dashboardRoutes     from './features/admin/dashboard/dashboard.routes';
 import teacherSelfRoutes   from './features/teacher/teacher.routes';
 import studentSelfRoutes   from './features/students/students.routes';
 
@@ -56,6 +61,11 @@ app.use('/api/admin/announcements', announcementRoutes);
 app.use('/api/admin/events', eventRoutes);
 app.use('/api/admin/exams', examRoutes);
 app.use('/api/admin/attendance', attendanceReportRoutes);
+app.use('/api/admin/schedule', classScheduleRoutes);
+app.use('/api/admin/leave', leaveRoutes);
+app.use('/api/admin/teacher-attendance', teacherAttendanceRoutes);
+app.use('/api/admin/staff', staffRoutes);
+app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
 

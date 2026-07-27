@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AttendanceStatus, HomeworkType } from '@prisma/client';
+import { AttendanceStatus, HomeworkType, LeaveStatus, EventType } from '@prisma/client';
 
 export const updateProfileSchema = z.object({
   name:  z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
@@ -8,7 +8,7 @@ export const updateProfileSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword:     z.string().min(8, 'New password must be at least 8 characters').max(100),
+  newPassword:     z.string().min(6, 'New password must be at least 6 characters').max(100),
 });
 
 export const listMyStudentsQuerySchema = z.object({
@@ -23,6 +23,17 @@ export const listMyAnnouncementsQuerySchema = z.object({
   page:     z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(15),
   search:   z.string().trim().min(1).optional(),
+  from:     z.coerce.date({ errorMap: () => ({ message: 'Invalid from date' }) }).optional(),
+  to:       z.coerce.date({ errorMap: () => ({ message: 'Invalid to date' }) }).optional(),
+});
+
+export const listMyEventsQuerySchema = z.object({
+  page:      z.coerce.number().int().positive().default(1),
+  pageSize:  z.coerce.number().int().positive().max(100).default(15),
+  search:    z.string().trim().min(1).optional(),
+  eventType: z.nativeEnum(EventType).optional(),
+  from:      z.coerce.date({ errorMap: () => ({ message: 'Invalid from date' }) }).optional(),
+  to:        z.coerce.date({ errorMap: () => ({ message: 'Invalid to date' }) }).optional(),
 });
 
 // ── Attendance ──────────────────────────────────────────────────
@@ -54,6 +65,22 @@ export const updateAttendanceRecordSchema = z.object({
   status: z.nativeEnum(AttendanceStatus),
 });
 
+// ── My own attendance (read-only — Admin marks/corrects it) ──────
+export const listMyAttendanceRecordsQuerySchema = z.object({
+  page:     z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(15),
+  date:     z.coerce.date({ errorMap: () => ({ message: 'Invalid date' }) }).optional(),
+  from:     z.coerce.date({ errorMap: () => ({ message: 'Invalid from date' }) }).optional(),
+  to:       z.coerce.date({ errorMap: () => ({ message: 'Invalid to date' }) }).optional(),
+  status:   z.nativeEnum(AttendanceStatus).optional(),
+})
+  .refine(data => !data.from || !data.to || data.to >= data.from, {
+    message: 'to must be on or after from', path: ['to'],
+  })
+  .refine(data => !(data.date && (data.from || data.to)), {
+    message: 'Use either date or from/to range, not both', path: ['date'],
+  });
+
 // ── Homework ──────────────────────────────────────────────────
 export const createHomeworkSchema = z.object({
   classId:     z.string().uuid('Invalid class id'),
@@ -81,10 +108,35 @@ export const listMyHomeworkQuerySchema = z.object({
   subjectId: z.string().uuid('Invalid subject id').optional(),
 });
 
+// ── Leave requests (review only — applying is a parent action) ──
+export const listLeaveRequestsQuerySchema = z.object({
+  status: z.nativeEnum(LeaveStatus).optional(),
+});
+
+export const reviewLeaveRequestSchema = z.object({
+  status:        z.enum(['APPROVED', 'REJECTED']),
+  reviewRemarks: z.string().max(500).optional(),
+});
+
+// ── My own leave (teacher applying for themselves — Admin reviews) ─
+export const applyMyLeaveSchema = z.object({
+  fromDate: z.coerce.date({ errorMap: () => ({ message: 'Invalid from date' }) }),
+  toDate:   z.coerce.date({ errorMap: () => ({ message: 'Invalid to date' }) }),
+  reason:   z.string().min(2, 'Reason is required').max(500),
+}).refine(
+  data => data.toDate >= data.fromDate,
+  { message: 'toDate must be on or after fromDate', path: ['toDate'] },
+);
+
+export const listMyLeaveQuerySchema = z.object({
+  status: z.nativeEnum(LeaveStatus).optional(),
+});
+
 export type UpdateProfileSchema                  = z.infer<typeof updateProfileSchema>;
 export type ResetPasswordSchema                  = z.infer<typeof resetPasswordSchema>;
 export type ListMyStudentsQuerySchema             = z.infer<typeof listMyStudentsQuerySchema>;
 export type ListMyAnnouncementsQuerySchema        = z.infer<typeof listMyAnnouncementsQuerySchema>;
+export type ListMyEventsQuerySchema                = z.infer<typeof listMyEventsQuerySchema>;
 export type GetSectionAttendanceQuerySchema       = z.infer<typeof getSectionAttendanceQuerySchema>;
 export type MarkAttendanceSchema                  = z.infer<typeof markAttendanceSchema>;
 export type StudentAttendanceHistoryQuerySchema   = z.infer<typeof studentAttendanceHistoryQuerySchema>;
@@ -92,3 +144,8 @@ export type UpdateAttendanceRecordSchema          = z.infer<typeof updateAttenda
 export type CreateHomeworkSchema                  = z.infer<typeof createHomeworkSchema>;
 export type UpdateHomeworkSchema                  = z.infer<typeof updateHomeworkSchema>;
 export type ListMyHomeworkQuerySchema              = z.infer<typeof listMyHomeworkQuerySchema>;
+export type ListMyAttendanceRecordsQuerySchema     = z.infer<typeof listMyAttendanceRecordsQuerySchema>;
+export type ListLeaveRequestsQuerySchema           = z.infer<typeof listLeaveRequestsQuerySchema>;
+export type ReviewLeaveRequestSchema               = z.infer<typeof reviewLeaveRequestSchema>;
+export type ApplyMyLeaveSchema                     = z.infer<typeof applyMyLeaveSchema>;
+export type ListMyLeaveQuerySchema                 = z.infer<typeof listMyLeaveQuerySchema>;

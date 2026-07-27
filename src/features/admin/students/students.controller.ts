@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as studentsService from './students.service';
-import { createStudentSchema, listStudentsQuerySchema } from './students.validation';
+import { createStudentSchema, updateStudentSchema, listStudentsQuerySchema } from './students.validation';
 import { sendSuccess } from '../../../shared/utils/apiResponse';
 
 // ── POST /admin/students ──────────────────────────────────────
@@ -29,6 +29,22 @@ export const getByIdHandler = async (
     const schoolId = (req as any).user.schoolId;
     const student  = await studentsService.getStudentById(schoolId, req.params.studentId);
     sendSuccess(res, student);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /admin/students/:studentId ───────────────────────────
+export const updateHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input    = updateStudentSchema.parse(req.body);
+    const schoolId = (req as any).user.schoolId;
+    const result   = await studentsService.updateStudent(schoolId, req.params.studentId, input);
+    sendSuccess(res, result);
   } catch (err) {
     next(err);
   }

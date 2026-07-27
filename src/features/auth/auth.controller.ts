@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as authService from './auth.service';
 import {
-  signupSchema, loginSchema, refreshSchema, logoutSchema,
+  signupSchema, loginSchema, refreshSchema, logoutSchema, resetPasswordSchema,
 } from './auth.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -60,6 +60,21 @@ export const logoutHandler = async (
     const { refreshToken } = logoutSchema.parse(req.body);
     await authService.logout(refreshToken);
     sendSuccess(res, { message: 'Logged out successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/reset-password ─────────────────────────────────
+export const resetPasswordHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { currentPassword, newPassword } = resetPasswordSchema.parse(req.body);
+    await authService.resetPassword((req as any).user.sub, currentPassword, newPassword);
+    sendSuccess(res, { message: 'Password updated successfully. Please log in again on other devices.' });
   } catch (err) {
     next(err);
   }

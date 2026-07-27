@@ -2,7 +2,7 @@ import { Prisma, Student, Class, Section } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import { hashPassword } from '../../../shared/utils/hash';
 import { generateDefaultPassword } from '../../../shared/utils/defaultPassword';
-import { CreateStudentSchema, ListStudentsQuerySchema } from './students.validation';
+import { CreateStudentSchema, UpdateStudentSchema, ListStudentsQuerySchema } from './students.validation';
 
 type StudentWithRefs = Student & { class: Class; section: Section };
 
@@ -135,6 +135,66 @@ export const createStudent = async (
   });
 
   return { student: toStudentResponse(student), parentAccount };
+};
+
+// ── Update a student's profile (+ synced parent User fields) ───────
+// classId requires sectionId together (enforced at the Zod layer) —
+// the target section is re-validated against the target class, and
+// rollNo is checked for a clash in the target section either way.
+export const updateStudent = async (
+  schoolId: string,
+  studentId: string,
+  input: UpdateStudentSchema,
+): Promise<StudentResponse> => {
+
+  const student = await prisma.student.findFirst({ where: { id: studentId, schoolId } });
+  if (!student) throw notFound('Student not found', 'STUDENT_NOT_FOUND');
+
+  const targetClassId   = input.classId   ?? student.classId;
+  const targetSectionId = input.sectionId ?? student.sectionId;
+
+  if (input.classId || input.sectionId) {
+    const section = await prisma.section.findFirst({ where: { id: targetSectionId, classId: targetClassId } });
+    if (!section) throw notFound('Section not found', 'SECTION_NOT_FOUND');
+  }
+
+  if (input.classId || input.sectionId || input.rollNo !== undefined) {
+    const targetRollNo = input.rollNo ?? student.rollNo;
+    const clash = await prisma.student.findFirst({
+      where: { sectionId: targetSectionId, rollNo: targetRollNo, NOT: { id: studentId } },
+    });
+    if (clash) throw conflict('This roll number is already taken in the target section', 'ROLL_NO_TAKEN');
+  }
+
+  if (input.parentEmail && input.parentEmail !== student.parentEmail) {
+    const existingUser = await prisma.user.findUnique({ where: { email: input.parentEmail } });
+    if (existingUser && existingUser.id !== student.parentUserId) {
+      throw conflict('Email already registered', 'EMAIL_TAKEN');
+    }
+  }
+
+  const { parentName, parentPhone, parentEmail } = input;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (parentName !== undefined || parentPhone !== undefined || parentEmail !== undefined) {
+      await tx.user.update({
+        where: { id: student.parentUserId },
+        data: {
+          ...(parentName  !== undefined ? { name: parentName }   : {}),
+          ...(parentPhone !== undefined ? { phone: parentPhone } : {}),
+          ...(parentEmail !== undefined ? { email: parentEmail } : {}),
+        },
+      });
+    }
+
+    return tx.student.update({
+      where:   { id: studentId },
+      data:    input,
+      include: { class: true, section: true },
+    });
+  });
+
+  return toStudentResponse(updated);
 };
 
 // ── Get a single student's details ────────────────────────────────

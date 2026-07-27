@@ -1,5 +1,6 @@
 import { Prisma, Announcement, User } from '@prisma/client';
 import { prisma } from '../../../config/db';
+import { notifyAudience } from '../../notifications/notifications.service';
 import {
   CreateAnnouncementSchema,
   UpdateAnnouncementSchema,
@@ -77,6 +78,17 @@ export const createAnnouncement = async (
     include: { createdByUser: true },
   });
 
+  // Fire-and-forget — never awaited, never throws (see notifyAudience).
+  // Skipped when publishAt is in the future: there's no job scheduler here
+  // to fire it later, so an immediate push would be misleading.
+  if (!announcement.publishAt || announcement.publishAt <= new Date()) {
+    notifyAudience(schoolId, announcement.audience, {
+      title: announcement.title,
+      body:  announcement.message,
+      data:  { type: 'ANNOUNCEMENT', announcementId: announcement.id },
+    });
+  }
+
   return toResponse(announcement);
 };
 
@@ -152,6 +164,15 @@ export const updateAnnouncement = async (
     data:    input,
     include: { createdByUser: true },
   });
+
+  // Fire-and-forget — same gating as create: skip while still scheduled.
+  if (!announcement.publishAt || announcement.publishAt <= new Date()) {
+    notifyAudience(schoolId, announcement.audience, {
+      title: announcement.title,
+      body:  announcement.message,
+      data:  { type: 'ANNOUNCEMENT', announcementId: announcement.id },
+    });
+  }
 
   return toResponse(announcement);
 };

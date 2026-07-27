@@ -6,7 +6,7 @@ export const signupSchema = z.object({
   name:       z.string().min(2, 'Name must be at least 2 characters').max(100),
   email:      z.string().email('Invalid email address'),
   phone:      z.string().min(10).max(15),
-  password:   z.string().min(8, 'Password must be at least 8 characters').max(100),
+  password:   z.string().min(6, 'Password must be at least 6 characters').max(100),
 });
 
 export const loginSchema = z.object({
@@ -24,7 +24,13 @@ export const logoutSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
-export type SignupSchema  = z.infer<typeof signupSchema>;
-export type LoginSchema   = z.infer<typeof loginSchema>;
-export type RefreshSchema = z.infer<typeof refreshSchema>;
-export type LogoutSchema  = z.infer<typeof logoutSchema>;
+export const resetPasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword:     z.string().min(6, 'New password must be at least 6 characters').max(100),
+});
+
+export type SignupSchema        = z.infer<typeof signupSchema>;
+export type LoginSchema         = z.infer<typeof loginSchema>;
+export type RefreshSchema       = z.infer<typeof refreshSchema>;
+export type LogoutSchema        = z.infer<typeof logoutSchema>;
+export type ResetPasswordSchema = z.infer<typeof resetPasswordSchema>;

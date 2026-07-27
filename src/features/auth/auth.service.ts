@@ -1,6 +1,7 @@
 import { User } from '@prisma/client';
 import { prisma }              from '../../config/db';
 import { hashPassword, comparePassword } from '../../shared/utils/hash';
+import { changeOwnPassword } from '../../shared/services/account.service';
 import {
   signAccessToken,
   signRefreshToken,
@@ -177,4 +178,13 @@ export const refresh = async (
 // ── Logout ────────────────────────────────────────────────────
 export const logout = async (token: string): Promise<void> => {
   await prisma.refreshToken.deleteMany({ where: { token } });
+};
+
+// ── Reset own password (ADMIN) ─────────────────────────────────
+export const resetPassword = async (
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> => {
+  await changeOwnPassword(userId, currentPassword, newPassword);
 };
