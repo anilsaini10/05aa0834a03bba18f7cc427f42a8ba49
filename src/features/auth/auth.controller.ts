@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as authService from './auth.service';
 import {
   signupSchema, loginSchema, refreshSchema, logoutSchema, resetPasswordSchema,
+  forgotPasswordSchema, resetPasswordConfirmSchema,
 } from './auth.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -75,6 +76,36 @@ export const resetPasswordHandler = async (
     const { currentPassword, newPassword } = resetPasswordSchema.parse(req.body);
     await authService.resetPassword((req as any).user.sub, currentPassword, newPassword);
     sendSuccess(res, { message: 'Password updated successfully. Please log in again on other devices.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/forgot-password ────────────────────────────────
+export const forgotPasswordHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { email } = forgotPasswordSchema.parse(req.body);
+    await authService.requestPasswordReset(email);
+    sendSuccess(res, { message: 'If an account with that email exists, an OTP has been sent.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/reset-password/confirm ─────────────────────────
+export const resetPasswordConfirmHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { email, otp, newPassword } = resetPasswordConfirmSchema.parse(req.body);
+    await authService.confirmPasswordReset(email, otp, newPassword);
+    sendSuccess(res, { message: 'Password reset successfully. Please log in again.' });
   } catch (err) {
     next(err);
   }

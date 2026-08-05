@@ -1,6 +1,8 @@
 import { User } from '@prisma/client';
 import { prisma }              from '../../config/db';
 import { hashPassword, comparePassword } from '../../shared/utils/hash';
+import { generateOtp } from '../../shared/utils/otp';
+import { sendMail } from '../../config/mailer';
 import { changeOwnPassword } from '../../shared/services/account.service';
 import {
   signAccessToken,
@@ -187,4 +189,85 @@ export const resetPassword = async (
   newPassword: string,
 ): Promise<void> => {
   await changeOwnPassword(userId, currentPassword, newPassword);
+};
+
+// ════════════════════════════════════════════════════════════
+// Forgot password (OTP over email) — works for any role, since
+// User.email is globally unique.
+// ════════════════════════════════════════════════════════════
+
+const OTP_TTL_MS = 10 * 60 * 1000;
+
+const invalidOtp = () => {
+  const err = new Error('Invalid or expired OTP') as any;
+  err.code       = 'INVALID_OTP';
+  err.statusCode = 400;
+  return err;
+};
+
+const otpEmailHtml = (name: string, otp: string): string => `
+  <p>Hi ${name},</p>
+  <p>Your password reset OTP is:</p>
+  <h2 style="letter-spacing: 4px;">${otp}</h2>
+  <p>This code expires in 10 minutes. If you didn't request this, you can ignore this email.</p>
+`;
+
+// ── Request an OTP — always resolves the same way whether or not the
+//    email exists, so callers can't use this to enumerate accounts ───
+export const requestPasswordReset = async (email: string): Promise<void> => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return;
+
+  const otp      = generateOtp();
+  const codeHash = await hashPassword(otp);
+
+  await prisma.$transaction([
+    prisma.passwordResetToken.deleteMany({ where: { userId: user.id, used: false } }),
+    prisma.passwordResetToken.create({
+      data: {
+        userId:    user.id,
+        codeHash,
+        expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      },
+    }),
+  ]);
+
+  try {
+    await sendMail(user.email, 'Your password reset OTP', otpEmailHtml(user.name, otp));
+  } catch (err) {
+    console.error('requestPasswordReset: failed to send OTP email:', err);
+  }
+};
+
+// ── Confirm an OTP and set the new password ─────────────────────
+// Revokes all existing refresh tokens on success, same as changeOwnPassword.
+export const confirmPasswordReset = async (
+  email: string,
+  otp: string,
+  newPassword: string,
+): Promise<void> => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw invalidOtp();
+
+  const candidates = await prisma.passwordResetToken.findMany({
+    where:   { userId: user.id, used: false, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  let matched: (typeof candidates)[number] | undefined;
+  for (const candidate of candidates) {
+    if (await comparePassword(otp, candidate.codeHash)) {
+      matched = candidate;
+      break;
+    }
+  }
+  if (!matched) throw invalidOtp();
+
+  const passwordHash = await hashPassword(newPassword);
+
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+    prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    prisma.passwordResetToken.update({ where: { id: matched.id }, data: { used: true } }),
+  ]);
 };

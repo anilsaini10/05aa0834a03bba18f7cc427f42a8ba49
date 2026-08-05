@@ -17,7 +17,27 @@
       "Bash(python3 -m json.tool /Users/user/Desktop/Office/App/AriseFolder/arise_backend/postman/Arise-Auth.postman_collection.json)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']; print\\(d['title'], '-> status:', d['status'], 'publishAt:', d['publishAt'], 'expiresAt:', d['expiresAt']\\)\")",
       "Bash(python3 -m json.tool /Users/user/Desktop/Office/App/AriseFolder/arise_backend/postman/AriseCollection.json)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\)['data'][0]; [print\\(s['name'], '-> classTeacherName:', s['classTeacherName']\\) for s in d['sections']]\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\)['data'][0]; [print\\(s['name'], '-> classTeacherName:', s['classTeacherName']\\) for s in d['sections']]\")",
+      "Bash(python3 -c \"import datetime; print\\(datetime.date\\(2026,7,17\\).strftime\\('%A'\\)\\)\")",
+      "Bash(curl -s http://localhost:5000/health)",
+      "Bash(mkdir -p /Users/user/Desktop/Office/App/AriseFolder/arise_backend/src/features/admin/dashboard)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\([i['title'] for i in d['data']['items']]\\)\")",
+      "Bash(sleep 2 *)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(npx prisma *)",
+      "Bash(kill %1)",
+      "Bash(echo \"---exit:$?---\")",
+      "Bash(git check-ignore *)",
+      "Bash(node -e \"console.log\\(require\\('firebase-admin/package.json'\\).version\\)\")",
+      "Bash(lsof -i :5000 -sTCP:LISTEN)",
+      "Bash(ps -o pid,ppid,command -p 4788,7037)",
+      "Bash(ps -o pid,ppid,command -p 4788)",
+      "Bash(cd /Users/user/Desktop/Office/App/AriseFolder/arise_backend *)",
+      "Bash(npm install *)"
+    ],
+    "additionalDirectories": [
+      "/Users/user/Desktop/Office/App/AriseFolder/arise_backend/src/features/admin",
+      "/Users/user/Desktop/Office/App/AriseFolder/arise_backend"
     ]
   }
 }

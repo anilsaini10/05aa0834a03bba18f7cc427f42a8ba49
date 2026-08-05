@@ -2,10 +2,12 @@ import app           from './app';
 import { env }        from './config/env';
 import { connectDB, disconnectDB } from './config/db';
 import { initFirebase } from './config/firebase';
+import { initMailer }   from './config/mailer';
 
 const startServer = async (): Promise<void> => {
   await connectDB();
   initFirebase();
+  initMailer();
 
   const server = app.listen(Number(env.PORT), () => {
     console.log('');
@@ -23,6 +25,8 @@ const startServer = async (): Promise<void> => {
     console.log('  POST /api/auth/logout');
     console.log('  GET  /api/auth/me');
     console.log('  POST /api/auth/reset-password');
+    console.log('  POST /api/auth/forgot-password');
+    console.log('  POST /api/auth/reset-password/confirm');
     console.log('  POST /api/notifications/register');
     console.log('  POST /api/notifications/unregister');
     console.log('  POST /api/notifications/send');

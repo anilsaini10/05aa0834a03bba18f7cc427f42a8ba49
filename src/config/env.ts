@@ -14,6 +14,8 @@ const envSchema = z.object({
   BCRYPT_ROUNDS:       z.string().default('12'),
   ALLOWED_ORIGINS:     z.string().default('http://localhost:3000'),
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+  GMAIL_USER:          z.string().optional(),
+  GMAIL_APP_PASSWORD:  z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -113,6 +113,7 @@ model User {
   leaveRequestsReviewed LeaveRequest[]    @relation("LeaveReviewedBy")
   teacherLeaveRequestsReviewed TeacherLeaveRequest[] @relation("TeacherLeaveReviewedBy")
   teacherAttendanceMarked      TeacherAttendanceRecord[]
+  passwordResetTokens          PasswordResetToken[]
 
   @@index([schoolId])
   @@map("users")
@@ -343,6 +344,22 @@ model RefreshToken {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
+}
+
+// ── PasswordResetToken — forgot-password OTP ─────────────────────
+// codeHash is a bcrypt hash of the 6-digit OTP, never the plaintext —
+// so a DB leak alone can't be used to reset anyone's password.
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 // ── DeviceToken ────────────────────────────────────────────────
