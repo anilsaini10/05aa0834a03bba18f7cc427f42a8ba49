@@ -6,7 +6,7 @@ export interface JwtPayload {
   sub:      string;   // user id
   email:    string;
   role:     Role;
-  schoolId: string;
+  schoolId: string | null;  // null only for SUPER_ADMIN
   iat?:     number;
   exp?:     number;
 }

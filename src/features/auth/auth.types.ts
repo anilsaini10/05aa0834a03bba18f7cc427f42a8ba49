@@ -35,6 +35,6 @@ export interface UserPublic {
   email:      string;
   phone:      string | null;
   role:       Role;
-  schoolId:   string;
-  schoolName: string;
+  schoolId:   string | null;
+  schoolName: string | null;
 }

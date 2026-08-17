@@ -19,7 +19,7 @@ router.post('/login',   loginHandler);
 router.post('/refresh', refreshHandler);
 router.post('/logout',  logoutHandler);
 router.get('/me',       authGuard, meHandler);
-router.post('/reset-password', authGuard, roleGuard('ADMIN'), resetPasswordHandler);
+router.post('/reset-password', authGuard, roleGuard('ADMIN', 'SUPER_ADMIN'), resetPasswordHandler);
 router.post('/forgot-password',        forgotPasswordHandler);
 router.post('/reset-password/confirm', resetPasswordConfirmHandler);
 

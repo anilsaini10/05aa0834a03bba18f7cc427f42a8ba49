@@ -21,6 +21,7 @@ import staffRoutes         from './features/admin/staff/staff.routes';
 import dashboardRoutes     from './features/admin/dashboard/dashboard.routes';
 import teacherSelfRoutes   from './features/teacher/teacher.routes';
 import studentSelfRoutes   from './features/students/students.routes';
+import superAdminRoutes    from './features/superAdmin/superAdmin.routes';
 
 // ── Middleware ────────────────────────────────────────────────
 import { errorHandler } from './middleware/errorHandler';
@@ -68,6 +69,7 @@ app.use('/api/admin/staff', staffRoutes);
 app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
+app.use('/api/super-admin', superAdminRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

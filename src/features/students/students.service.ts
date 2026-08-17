@@ -105,7 +105,7 @@ export const getProfile = async (userId: string) => {
 export const getMyDashboard = async (userId: string, query: GetMyDashboardQuerySchema) => {
   const parent  = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const student = await requireOwnChild(userId, query.studentId);
-  const school  = await prisma.school.findUniqueOrThrow({ where: { id: parent.schoolId } });
+  const school  = await prisma.school.findUniqueOrThrow({ where: { id: parent.schoolId! } });
   const today   = todayDateOnly();
 
   const [attendanceRecord, pendingHomeworkCount, upcomingExamsCount] = await Promise.all([
@@ -462,7 +462,7 @@ export const listMyAnnouncements = async (userId: string, query: ListMyAnnouncem
   const now = new Date();
 
   const where: Prisma.AnnouncementWhereInput = {
-    schoolId: parent.schoolId,
+    schoolId: parent.schoolId!,
     audience: { in: ['ALL', 'PARENT'] },
     AND: [
       { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
@@ -516,7 +516,7 @@ export const listMyEvents = async (userId: string, query: ListMyEventsQuerySchem
   const { page, pageSize, search, eventType, from, to } = query;
 
   const where: Prisma.EventWhereInput = {
-    schoolId: parent.schoolId,
+    schoolId: parent.schoolId!,
     audience: { in: ['ALL', 'PARENT'] },
     ...(eventType ? { eventType } : {}),
     ...(from ? { endDate: { gte: from } } : {}),

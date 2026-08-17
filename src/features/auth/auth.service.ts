@@ -16,7 +16,7 @@ import {
 } from './auth.types';
 
 // ── Helper — strip password ───────────────────────────────────
-const toPublic = (user: User, schoolName: string): UserPublic => ({
+const toPublic = (user: User, schoolName: string | null): UserPublic => ({
   id:         user.id,
   name:       user.name,
   email:      user.email,
@@ -27,7 +27,7 @@ const toPublic = (user: User, schoolName: string): UserPublic => ({
 });
 
 // ── Build JWT payload ─────────────────────────────────────────
-const buildPayload = (user: { id: string; email: string; role: any; schoolId: string }) => ({
+const buildPayload = (user: { id: string; email: string; role: any; schoolId: string | null }) => ({
   sub:      user.id,
   email:    user.email,
   role:     user.role,
@@ -45,7 +45,7 @@ const invalidCredentials = () => {
 // ── Issue tokens + shape response for an authenticated user ────
 const issueSession = async (
   user: User,
-  schoolName: string,
+  schoolName: string | null,
 ): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
 
   const payload      = buildPayload(user);
@@ -109,14 +109,15 @@ export const signup = async (
   return issueSession(user, school.name);
 };
 
-// ── Login — school-scoped for TEACHER/PARENT, global for ADMIN ─
+// ── Login — school-scoped for TEACHER/PARENT, global for ADMIN/SUPER_ADMIN ─
 export const login = async (
   input: LoginInput,
 ): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
 
   const { identifier, password, role, schoolId } = input;
+  const isSchoolScoped = role !== 'ADMIN' && role !== 'SUPER_ADMIN';
 
-  if (role !== 'ADMIN' && !schoolId) {
+  if (isSchoolScoped && !schoolId) {
     const err = new Error('schoolId is required for this role') as any;
     err.code       = 'SCHOOL_ID_REQUIRED';
     err.statusCode = 400;
@@ -126,7 +127,7 @@ export const login = async (
   const user = await prisma.user.findFirst({
     where: {
       role,
-      ...(role === 'ADMIN' ? {} : { schoolId }),
+      ...(isSchoolScoped ? { schoolId } : {}),
       OR: [{ email: identifier }, { phone: identifier }],
     },
     include: { school: true },
@@ -141,7 +142,7 @@ export const login = async (
     throw invalidCredentials();
   }
 
-  return issueSession(user, user.school.name);
+  return issueSession(user, user.school?.name ?? null);
 };
 
 // ── Refresh ───────────────────────────────────────────────────

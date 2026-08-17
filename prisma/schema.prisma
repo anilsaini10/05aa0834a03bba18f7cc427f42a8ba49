@@ -11,6 +11,7 @@ datasource db {
 
 // ── Enums ─────────────────────────────────────────────────────
 enum Role {
+  SUPER_ADMIN
   ADMIN
   TEACHER
   PARENT
@@ -46,6 +47,20 @@ enum ResultStatus {
   PENDING
   GRADED
   ABSENT
+}
+
+enum Board {
+  CBSE
+  ICSE
+  STATE_BOARD
+  IB
+  OTHER
+}
+
+enum SchoolType {
+  CO_ED
+  BOYS
+  GIRLS
 }
 
 enum AttendanceStatus {
@@ -93,12 +108,14 @@ model User {
   phone         String?        @unique
   passwordHash  String
   role          Role
-  schoolId      String
+  // Nullable ONLY for SUPER_ADMIN — enforced in app code + a DB CHECK
+  // constraint (see migration), since a super admin isn't scoped to a school.
+  schoolId      String?
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  school           School         @relation(fields: [schoolId], references: [id])
+  school           School?        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   refreshTokens    RefreshToken[]
   deviceTokens     DeviceToken[]
   parentOfStudents      Student[]
@@ -121,9 +138,49 @@ model User {
 
 // ── School ────────────────────────────────────────────────────
 model School {
-  id        String    @id @default(uuid())
-  name      String
-  city      String?
+  id   String  @id @default(uuid())
+  name String
+  // Human-friendly unique identifier, e.g. "SCH0001" — auto-generated at
+  // creation if not supplied. Immutable once set (not in the update schema).
+  code String? @unique
+
+  board      Board?
+  schoolType SchoolType?
+  medium     String?
+  establishedYear Int?
+  logoUrl    String?
+
+  // ── Location ──────────────────────────────────────────────────
+  // city/contactEmail are REQUIRED going forward (enforced in the create
+  // validation, not here) — kept nullable at the DB level only because
+  // existing rows predate this and shouldn't be force-backfilled.
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  pincode      String?
+  country      String?  @default("India")
+  latitude     Float?
+  longitude    Float?
+
+  // ── Contact ───────────────────────────────────────────────────
+  contactEmail   String?
+  contactPhone   String?
+  alternatePhone String?
+  websiteUrl     String?
+
+  // ── Principal / Head ──────────────────────────────────────────
+  principalName  String?
+  principalEmail String?
+  principalPhone String?
+
+  // ── Academic ──────────────────────────────────────────────────
+  totalStudentsApprox       Int?
+  totalStaffApprox          Int?
+  classesFrom               String?
+  classesTo                 String?
+  academicSessionStartMonth Int?
+
   createdAt DateTime  @default(now())
 
   users         User[]

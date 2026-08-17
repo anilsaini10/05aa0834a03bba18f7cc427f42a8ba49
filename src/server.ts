@@ -136,6 +136,15 @@ const startServer = async (): Promise<void> => {
     console.log('  DELETE /api/students/leave/:leaveId');
     console.log('  GET  /api/students/homework');
     console.log('  GET  /api/students/homework/:homeworkId');
+    console.log('  POST /api/super-admin/schools');
+    console.log('  GET  /api/super-admin/schools');
+    console.log('  GET  /api/super-admin/schools/:schoolId');
+    console.log('  PATCH /api/super-admin/schools/:schoolId');
+    console.log('  POST /api/super-admin/schools/:schoolId/admins');
+    console.log('  GET  /api/super-admin/schools/:schoolId/admins');
+    console.log('  PATCH /api/super-admin/schools/:schoolId/admins/:adminId');
+    console.log('  PATCH /api/super-admin/schools/:schoolId/admins/:adminId/status');
+    console.log('  GET  /api/super-admin/admins');
     console.log('');
   });
 

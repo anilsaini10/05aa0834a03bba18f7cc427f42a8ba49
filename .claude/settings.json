@@ -33,7 +33,14 @@
       "Bash(ps -o pid,ppid,command -p 4788,7037)",
       "Bash(ps -o pid,ppid,command -p 4788)",
       "Bash(cd /Users/user/Desktop/Office/App/AriseFolder/arise_backend *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(nohup npm run dev)",
+      "Bash(disown)",
+      "Bash(npx ts-node *)",
+      "Bash(curl -s -X POST http://localhost:5000/api/auth/login -H \"Content-Type: application/json\" -d '{\"identifier\":\"superadmin@gmail.com\",\"password\":\"123456\",\"role\":\"SUPER_ADMIN\"}')",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>console.log\\('password back to 123456:', JSON.parse\\(d\\).success\\)\\)\")"
     ],
     "additionalDirectories": [
       "/Users/user/Desktop/Office/App/AriseFolder/arise_backend/src/features/admin",
