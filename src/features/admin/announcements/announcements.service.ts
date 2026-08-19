@@ -78,11 +78,14 @@ export const createAnnouncement = async (
     include: { createdByUser: true },
   });
 
-  // Fire-and-forget — never awaited, never throws (see notifyAudience).
-  // Skipped when publishAt is in the future: there's no job scheduler here
-  // to fire it later, so an immediate push would be misleading.
+  // Awaited (not fire-and-forget) — on serverless (Vercel), the function
+  // can freeze right after the response is sent, killing any unawaited
+  // async work. notifyAudience still never throws, so this can't fail
+  // the request either way. Skipped when publishAt is in the future:
+  // there's no job scheduler here to fire it later, so an immediate push
+  // would be misleading.
   if (!announcement.publishAt || announcement.publishAt <= new Date()) {
-    notifyAudience(schoolId, announcement.audience, {
+    await notifyAudience(schoolId, announcement.audience, {
       title: announcement.title,
       body:  announcement.message,
       data:  { type: 'ANNOUNCEMENT', announcementId: announcement.id },
@@ -165,9 +168,10 @@ export const updateAnnouncement = async (
     include: { createdByUser: true },
   });
 
-  // Fire-and-forget — same gating as create: skip while still scheduled.
+  // Awaited (see createAnnouncement) — same gating as create: skip while
+  // still scheduled.
   if (!announcement.publishAt || announcement.publishAt <= new Date()) {
-    notifyAudience(schoolId, announcement.audience, {
+    await notifyAudience(schoolId, announcement.audience, {
       title: announcement.title,
       body:  announcement.message,
       data:  { type: 'ANNOUNCEMENT', announcementId: announcement.id },

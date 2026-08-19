@@ -69,8 +69,11 @@ export const createEvent = async (
     include: { createdByUser: true },
   });
 
-  // Fire-and-forget — never awaited, never throws (see notifyAudience).
-  notifyAudience(schoolId, event.audience, {
+  // Awaited (not fire-and-forget) — on serverless (Vercel), the function
+  // can freeze right after the response is sent, killing any unawaited
+  // async work. notifyAudience still never throws, so this can't fail
+  // the request either way.
+  await notifyAudience(schoolId, event.audience, {
     title: event.title,
     body:  event.description ?? event.eventType,
     data:  { type: 'EVENT', eventId: event.id },
@@ -150,8 +153,11 @@ export const updateEvent = async (
     include: { createdByUser: true },
   });
 
-  // Fire-and-forget — never awaited, never throws (see notifyAudience).
-  notifyAudience(schoolId, event.audience, {
+  // Awaited (not fire-and-forget) — on serverless (Vercel), the function
+  // can freeze right after the response is sent, killing any unawaited
+  // async work. notifyAudience still never throws, so this can't fail
+  // the request either way.
+  await notifyAudience(schoolId, event.audience, {
     title: event.title,
     body:  event.description ?? event.eventType,
     data:  { type: 'EVENT', eventId: event.id },

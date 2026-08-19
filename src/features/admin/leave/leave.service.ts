@@ -122,9 +122,11 @@ export const reviewLeaveRequest = async (
     return result;
   });
 
-  // Fire-and-forget, single user only (the parent who applied) — never
-  // awaited, never throws (see notifyUser).
-  notifyUser(updated.appliedBy, {
+  // Awaited, single user only (the parent who applied) — on serverless
+  // (Vercel), the function can freeze right after the response is sent,
+  // killing any unawaited async work. notifyUser still never throws, so
+  // this can't fail the request either way.
+  await notifyUser(updated.appliedBy, {
     title: `Leave Request ${input.status === 'APPROVED' ? 'Approved' : 'Rejected'}`,
     body:  `${updated.student.name}'s leave (${toDateString(updated.fromDate)} - ${toDateString(updated.toDate)}) has been ${input.status.toLowerCase()}.`,
     data:  { type: 'LEAVE_REQUEST', leaveId: updated.id },
@@ -194,9 +196,11 @@ export const reviewTeacherLeaveRequest = async (
     include: TEACHER_LEAVE_INCLUDE,
   });
 
-  // Fire-and-forget, single user only (the teacher whose leave this is) —
-  // never awaited, never throws (see notifyUser).
-  notifyUser(updated.teacher.userId, {
+  // Awaited, single user only (the teacher whose leave this is) — on
+  // serverless (Vercel), the function can freeze right after the response
+  // is sent, killing any unawaited async work. notifyUser still never
+  // throws, so this can't fail the request either way.
+  await notifyUser(updated.teacher.userId, {
     title: `Leave Request ${input.status === 'APPROVED' ? 'Approved' : 'Rejected'}`,
     body:  `Your leave (${toDateString(updated.fromDate)} - ${toDateString(updated.toDate)}) has been ${input.status.toLowerCase()}.`,
     data:  { type: 'TEACHER_LEAVE_REQUEST', leaveId: updated.id },
