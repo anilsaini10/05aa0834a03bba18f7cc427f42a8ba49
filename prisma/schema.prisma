@@ -85,6 +85,11 @@ enum HomeworkType {
   OTHER
 }
 
+enum HomeworkSubmissionStatus {
+  SUBMITTED
+  NOT_SUBMITTED
+}
+
 enum DayOfWeek {
   MONDAY
   TUESDAY
@@ -125,6 +130,7 @@ model User {
   examsCreated          Exam[]
   attendanceMarked      AttendanceRecord[]
   homeworkCreated       Homework[]
+  homeworkSubmissionsMarked HomeworkSubmission[]
   classSchedulesCreated ClassSchedule[]
   leaveRequestsApplied  LeaveRequest[]    @relation("LeaveAppliedBy")
   leaveRequestsReviewed LeaveRequest[]    @relation("LeaveReviewedBy")
@@ -349,9 +355,35 @@ model Homework {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
+  submissions HomeworkSubmission[]
+
   @@index([schoolId])
   @@index([classId, sectionId, dueDate])
   @@map("homework")
+}
+
+// ── HomeworkSubmission ────────────────────────────────────────
+// Lazily created — a row exists only once a teacher has actually marked
+// a student for a given homework. A student with no row here is simply
+// "not yet checked" (surfaced as status: null in the API), not the same
+// as an explicit NOT_SUBMITTED.
+model HomeworkSubmission {
+  id         String                   @id @default(uuid())
+  homeworkId String
+  homework   Homework                 @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status     HomeworkSubmissionStatus
+  remarks    String?
+  markedBy   String
+  markedByUser User                   @relation(fields: [markedBy], references: [id])
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  @@unique([homeworkId, studentId])
+  @@index([homeworkId])
+  @@index([studentId])
+  @@map("homework_submissions")
 }
 
 // ── ClassSchedule ─────────────────────────────────────────────────
@@ -528,6 +560,7 @@ model Student {
   examResults          ExamResult[]
   attendanceRecords    AttendanceRecord[]
   leaveRequests        LeaveRequest[]
+  homeworkSubmissions  HomeworkSubmission[]
   createdAt            DateTime @default(now())
 
   @@index([schoolId])

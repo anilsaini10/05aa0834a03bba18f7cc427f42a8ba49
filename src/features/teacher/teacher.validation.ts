@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AttendanceStatus, HomeworkType, LeaveStatus, EventType } from '@prisma/client';
+import { AttendanceStatus, HomeworkType, HomeworkSubmissionStatus, LeaveStatus, EventType } from '@prisma/client';
 
 export const updateProfileSchema = z.object({
   name:  z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
@@ -99,6 +99,16 @@ export const updateHomeworkSchema = z.object({
   dueDate:     z.coerce.date({ errorMap: () => ({ message: 'Invalid due date' }) }).optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
+const homeworkSubmissionInput = z.object({
+  studentId: z.string().uuid('Invalid student id'),
+  status:    z.nativeEnum(HomeworkSubmissionStatus),
+  remarks:   z.string().max(500).optional(),
+});
+
+export const markHomeworkSubmissionsSchema = z.object({
+  records: z.array(homeworkSubmissionInput).min(1, 'At least one record is required'),
+});
+
 export const listMyHomeworkQuerySchema = z.object({
   page:      z.coerce.number().int().positive().default(1),
   pageSize:  z.coerce.number().int().positive().max(100).default(15),
@@ -142,6 +152,7 @@ export type MarkAttendanceSchema                  = z.infer<typeof markAttendanc
 export type StudentAttendanceHistoryQuerySchema   = z.infer<typeof studentAttendanceHistoryQuerySchema>;
 export type UpdateAttendanceRecordSchema          = z.infer<typeof updateAttendanceRecordSchema>;
 export type CreateHomeworkSchema                  = z.infer<typeof createHomeworkSchema>;
+export type MarkHomeworkSubmissionsSchema         = z.infer<typeof markHomeworkSubmissionsSchema>;
 export type UpdateHomeworkSchema                  = z.infer<typeof updateHomeworkSchema>;
 export type ListMyHomeworkQuerySchema              = z.infer<typeof listMyHomeworkQuerySchema>;
 export type ListMyAttendanceRecordsQuerySchema     = z.infer<typeof listMyAttendanceRecordsQuerySchema>;

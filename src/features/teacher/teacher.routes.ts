@@ -19,6 +19,8 @@ import {
   getHomeworkHandler,
   updateHomeworkHandler,
   deleteHomeworkHandler,
+  getHomeworkStudentsHandler,
+  markHomeworkSubmissionsHandler,
   listMyAttendanceRecordsHandler,
   listLeaveRequestsHandler,
   reviewLeaveRequestHandler,
@@ -53,6 +55,8 @@ router.get('/homework',               authGuard, roleGuard('TEACHER'), listHomew
 router.get('/homework/:homeworkId',   authGuard, roleGuard('TEACHER'), getHomeworkHandler);
 router.patch('/homework/:homeworkId', authGuard, roleGuard('TEACHER'), updateHomeworkHandler);
 router.delete('/homework/:homeworkId', authGuard, roleGuard('TEACHER'), deleteHomeworkHandler);
+router.get('/homework/:homeworkId/students',   authGuard, roleGuard('TEACHER'), getHomeworkStudentsHandler);
+router.patch('/homework/:homeworkId/students', authGuard, roleGuard('TEACHER'), markHomeworkSubmissionsHandler);
 
 router.get('/my-attendance',     authGuard, roleGuard('TEACHER'), listMyAttendanceRecordsHandler);
 

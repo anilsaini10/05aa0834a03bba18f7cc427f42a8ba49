@@ -116,6 +116,8 @@ const startServer = async (): Promise<void> => {
     console.log('  GET  /api/teacher/homework/:homeworkId');
     console.log('  PATCH /api/teacher/homework/:homeworkId');
     console.log('  DELETE /api/teacher/homework/:homeworkId');
+    console.log('  GET  /api/teacher/homework/:homeworkId/students');
+    console.log('  PATCH /api/teacher/homework/:homeworkId/students');
     console.log('  GET  /api/teacher/leave');
     console.log('  PATCH /api/teacher/leave/:leaveId');
     console.log('  POST /api/teacher/my-leave');

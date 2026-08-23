@@ -12,6 +12,7 @@ import {
   UpdateAttendanceRecordSchema,
   CreateHomeworkSchema,
   UpdateHomeworkSchema,
+  MarkHomeworkSubmissionsSchema,
   ListMyHomeworkQuerySchema,
   ListMyAttendanceRecordsQuerySchema,
   ListLeaveRequestsQuerySchema,
@@ -728,6 +729,86 @@ export const deleteHomework = async (userId: string, homeworkId: string): Promis
   await requireOwnHomework(userId, teacher.schoolId, homeworkId);
 
   await prisma.homework.delete({ where: { id: homeworkId } });
+};
+
+// ── GET /teacher/homework/:homeworkId/students ──────────────────
+// Every student in this homework's section, with their submission
+// status. Two queries total regardless of section size (students +
+// submissions), merged in memory — no N+1. A student with no
+// HomeworkSubmission row yet is "not checked" (status: null), not the
+// same as an explicit NOT_SUBMITTED.
+export const getHomeworkStudents = async (userId: string, homeworkId: string) => {
+  const teacher  = await getTeacherByUserId(userId);
+  const homework = await requireOwnHomework(userId, teacher.schoolId, homeworkId);
+
+  const [students, submissions] = await Promise.all([
+    prisma.student.findMany({
+      where:   { sectionId: homework.sectionId },
+      orderBy: { rollNo: 'asc' },
+    }),
+    prisma.homeworkSubmission.findMany({ where: { homeworkId } }),
+  ]);
+
+  const submissionByStudentId = new Map(submissions.map(s => [s.studentId, s]));
+
+  return {
+    homeworkId,
+    title:       homework.title,
+    dueDate:     homework.dueDate,
+    sectionId:   homework.sectionId,
+    sectionName: homework.section.name,
+    students: students.map(s => {
+      const submission = submissionByStudentId.get(s.id);
+      return {
+        studentId:   s.id,
+        name:        s.name,
+        admissionNo: s.admissionNo,
+        rollNo:      s.rollNo,
+        status:      submission?.status  ?? null,
+        remarks:     submission?.remarks ?? null,
+        updatedAt:   submission?.updatedAt ?? null,
+      };
+    }),
+  };
+};
+
+// ── PATCH /teacher/homework/:homeworkId/students — bulk mark/update ────
+// Same shape as markAttendance: one validation query for all student ids,
+// one transaction of upserts. Re-marking a student just overwrites their
+// existing status/remarks.
+export const markHomeworkSubmissions = async (
+  userId: string,
+  homeworkId: string,
+  input: MarkHomeworkSubmissionsSchema,
+) => {
+  const teacher  = await getTeacherByUserId(userId);
+  const homework = await requireOwnHomework(userId, teacher.schoolId, homeworkId);
+
+  const studentIds = input.records.map(r => r.studentId);
+  const validCount = await prisma.student.count({
+    where: { id: { in: studentIds }, sectionId: homework.sectionId },
+  });
+  if (validCount !== new Set(studentIds).size) {
+    throw notFound('One or more students do not belong to this homework\'s section', 'STUDENT_NOT_IN_SECTION');
+  }
+
+  await prisma.$transaction(
+    input.records.map(r =>
+      prisma.homeworkSubmission.upsert({
+        where: { homeworkId_studentId: { homeworkId, studentId: r.studentId } },
+        update: { status: r.status, remarks: r.remarks ?? null, markedBy: userId },
+        create: {
+          homeworkId,
+          studentId: r.studentId,
+          status:    r.status,
+          remarks:   r.remarks ?? null,
+          markedBy:  userId,
+        },
+      }),
+    ),
+  );
+
+  return { homeworkId, marked: input.records.length };
 };
 
 // ════════════════════════════════════════════════════════════

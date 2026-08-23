@@ -12,6 +12,7 @@ import {
   updateAttendanceRecordSchema,
   createHomeworkSchema,
   updateHomeworkSchema,
+  markHomeworkSubmissionsSchema,
   listMyHomeworkQuerySchema,
   listLeaveRequestsQuerySchema,
   reviewLeaveRequestSchema,
@@ -298,6 +299,35 @@ export const deleteHomeworkHandler = async (
   try {
     await teacherService.deleteHomework((req as any).user.sub, req.params.homeworkId);
     sendSuccess(res, { message: 'Homework deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/homework/:homeworkId/students ──────────────────
+export const getHomeworkStudentsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const result = await teacherService.getHomeworkStudents((req as any).user.sub, req.params.homeworkId);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /teacher/homework/:homeworkId/students ─────────────────
+export const markHomeworkSubmissionsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = markHomeworkSubmissionsSchema.parse(req.body);
+    const result = await teacherService.markHomeworkSubmissions((req as any).user.sub, req.params.homeworkId, input);
+    sendSuccess(res, result);
   } catch (err) {
     next(err);
   }
