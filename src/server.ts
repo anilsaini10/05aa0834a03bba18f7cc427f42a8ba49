@@ -30,6 +30,10 @@ const startServer = async (): Promise<void> => {
     console.log('  POST /api/notifications/register');
     console.log('  POST /api/notifications/unregister');
     console.log('  POST /api/notifications/send');
+    console.log('  GET  /api/notifications');
+    console.log('  GET  /api/notifications/unread-count');
+    console.log('  PATCH /api/notifications/read-all');
+    console.log('  PATCH /api/notifications/:id/read');
     console.log('  GET  /api/schools');
     console.log('  GET  /api/classes');
     console.log('  POST /api/classes');

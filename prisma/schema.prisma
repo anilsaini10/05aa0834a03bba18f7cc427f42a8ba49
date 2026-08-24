@@ -123,6 +123,7 @@ model User {
   school           School?        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   refreshTokens    RefreshToken[]
   deviceTokens     DeviceToken[]
+  notifications    Notification[]
   parentOfStudents      Student[]
   teacherProfile        Teacher?
   announcementsCreated  Announcement[]
@@ -463,6 +464,31 @@ model DeviceToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("device_tokens")
+}
+
+// ── Notification ─────────────────────────────────────────────────
+// In-app record of every notification a user has been sent — independent
+// of whether the push itself was delivered (device offline, no token
+// registered, Firebase not configured, etc.). This is the source of
+// truth for the mobile "notification inbox"; push is just the "ding".
+// `type` is a plain string (not an enum) on purpose — new features can
+// introduce new notification types without a schema migration, as long
+// as they pass a `type` inside PushPayload.data (see notifications.service.ts).
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   @default("GENERAL")
+  data      Json     @default("{}")
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
+  @@map("notifications")
 }
 
 // ── Class ─────────────────────────────────────────────────────
