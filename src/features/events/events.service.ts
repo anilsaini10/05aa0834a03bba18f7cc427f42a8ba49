@@ -1,6 +1,7 @@
 import { Prisma, Event, User } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { notifyAudience } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPE } from '../../constants';
 import {
   CreateEventSchema,
   UpdateEventSchema,
@@ -76,7 +77,7 @@ export const createEvent = async (
   await notifyAudience(schoolId, event.audience, {
     title: event.title,
     body:  event.description ?? event.eventType,
-    data:  { type: 'EVENT', eventId: event.id },
+    data:  { type: NOTIFICATION_TYPE.EVENT, eventId: event.id },
   });
 
   return toResponse(event);
@@ -160,7 +161,7 @@ export const updateEvent = async (
   await notifyAudience(schoolId, event.audience, {
     title: event.title,
     body:  event.description ?? event.eventType,
-    data:  { type: 'EVENT', eventId: event.id },
+    data:  { type: NOTIFICATION_TYPE.EVENT, eventId: event.id },
   });
 
   return toResponse(event);

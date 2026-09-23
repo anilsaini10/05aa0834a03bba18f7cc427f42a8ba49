@@ -2,6 +2,7 @@ import { Prisma, Student, Class, Section } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import { hashPassword } from '../../../shared/utils/hash';
 import { generateDefaultPassword } from '../../../shared/utils/defaultPassword';
+import { RECORD_STATUS, RECORD_STATUS_FILTER_ALL } from '../../../constants';
 import { CreateStudentSchema, UpdateStudentSchema, ListStudentsQuerySchema } from './students.validation';
 
 type StudentWithRefs = Student & { class: Class; section: Section };
@@ -46,6 +47,17 @@ const conflict = (message: string, code: string) => {
   return err;
 };
 
+// Next free roll number in a section — max ACTIVE rollNo + 1, or 1 if the
+// section has no active students yet. Surfaced in the ROLL_NO_TAKEN
+// message so the admin has a ready-to-use suggestion instead of guessing.
+const getSuggestedNextRollNo = async (sectionId: string): Promise<number> => {
+  const result = await prisma.student.aggregate({
+    where: { sectionId, status: RECORD_STATUS.ACTIVE },
+    _max:  { rollNo: true },
+  });
+  return (result._max.rollNo ?? 0) + 1;
+};
+
 const toStudentResponse = (student: StudentWithRefs): StudentResponse => ({
   id:                   student.id,
   admissionNo:          student.admissionNo,
@@ -78,9 +90,25 @@ export const createStudent = async (
   const section = await prisma.section.findFirst({ where: { id: input.sectionId, classId: input.classId } });
   if (!section) throw notFound('Section not found', 'SECTION_NOT_FOUND');
 
-  const existingUser = await prisma.user.findUnique({ where: { email: input.parentEmail } });
+  // Only an ACTIVE student occupies a roll number — one freed up by a
+  // soft-deleted (INACTIVE) student is reusable.
+  const rollNoClash = await prisma.student.findFirst({
+    where: { sectionId: input.sectionId, rollNo: input.rollNo, status: RECORD_STATUS.ACTIVE },
+  });
+  if (rollNoClash) {
+    const suggested = await getSuggestedNextRollNo(input.sectionId);
+    throw conflict(`This roll number is already taken in this section. Next available roll number: ${suggested}`, 'ROLL_NO_TAKEN');
+  }
+
+  // Match by email OR phone — a parent enrolling a second child very
+  // commonly reuses the same phone with a different/new email (or vice
+  // versa). Only matching by email would miss that, then crash later on
+  // User.phone's unique constraint when trying to INSERT a duplicate.
+  const existingUser = await prisma.user.findFirst({
+    where: { OR: [{ email: input.parentEmail }, { phone: input.parentPhone }] },
+  });
   if (existingUser && (existingUser.role !== 'PARENT' || existingUser.schoolId !== schoolId)) {
-    throw conflict('Email already registered', 'EMAIL_TAKEN');
+    throw conflict('Email or phone number already registered to a different account', 'EMAIL_TAKEN');
   }
 
   const defaultPassword = existingUser ? null : generateDefaultPassword(input.parentEmail);
@@ -160,16 +188,33 @@ export const updateStudent = async (
 
   if (input.classId || input.sectionId || input.rollNo !== undefined) {
     const targetRollNo = input.rollNo ?? student.rollNo;
+    // Only an ACTIVE student occupies a roll number — one freed up by a
+    // soft-deleted (INACTIVE) student is reusable.
     const clash = await prisma.student.findFirst({
-      where: { sectionId: targetSectionId, rollNo: targetRollNo, NOT: { id: studentId } },
+      where: { sectionId: targetSectionId, rollNo: targetRollNo, status: RECORD_STATUS.ACTIVE, NOT: { id: studentId } },
     });
-    if (clash) throw conflict('This roll number is already taken in the target section', 'ROLL_NO_TAKEN');
+    if (clash) {
+      const suggested = await getSuggestedNextRollNo(targetSectionId);
+      throw conflict(`This roll number is already taken in the target section. Next available roll number: ${suggested}`, 'ROLL_NO_TAKEN');
+    }
   }
 
-  if (input.parentEmail && input.parentEmail !== student.parentEmail) {
-    const existingUser = await prisma.user.findUnique({ where: { email: input.parentEmail } });
+  // Same email-or-phone check as createStudent — otherwise changing just
+  // the phone to one already used by a different account would crash on
+  // User.phone's unique constraint instead of a clean error.
+  const emailChanged = input.parentEmail && input.parentEmail !== student.parentEmail;
+  const phoneChanged = input.parentPhone && input.parentPhone !== student.parentPhone;
+  if (emailChanged || phoneChanged) {
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(emailChanged ? [{ email: input.parentEmail! }] : []),
+          ...(phoneChanged ? [{ phone: input.parentPhone! }] : []),
+        ],
+      },
+    });
     if (existingUser && existingUser.id !== student.parentUserId) {
-      throw conflict('Email already registered', 'EMAIL_TAKEN');
+      throw conflict('Email or phone number already registered to a different account', 'EMAIL_TAKEN');
     }
   }
 
@@ -208,11 +253,14 @@ export const getStudentById = async (schoolId: string, studentId: string): Promi
 };
 
 // ── List students (paginated, searchable) ────────────────────────
+// status omitted/undefined -> ACTIVE only, so a soft-deleted student
+// stays out of the default list; pass status=INACTIVE or status=ALL to see them.
 export const listStudents = async (schoolId: string, query: ListStudentsQuerySchema) => {
-  const { page, pageSize, search, classId, sectionId } = query;
+  const { page, pageSize, search, classId, sectionId, status } = query;
 
   const where: Prisma.StudentWhereInput = {
     schoolId,
+    ...(status === RECORD_STATUS_FILTER_ALL ? {} : { status: status ?? RECORD_STATUS.ACTIVE }),
     ...(classId ? { classId } : {}),
     ...(sectionId ? { sectionId } : {}),
     ...(search ? {
@@ -242,4 +290,25 @@ export const listStudents = async (schoolId: string, query: ListStudentsQuerySch
     total,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+};
+
+// ── DELETE /admin/students/:studentId — soft delete ────────────────
+// Never a hard delete — a student already has examResults,
+// attendanceRecords, leaveRequests, homeworkSubmissions, etc. (all
+// FK-linked), so removing the row would either fail outright or wreck
+// that history. Marking INACTIVE drops it out of the default list and
+// frees up its roll number for reuse in that section. The PARENT
+// account itself is untouched (not logged out, not deactivated) — they
+// may well have other active children under the same login.
+export const deleteStudent = async (schoolId: string, studentId: string): Promise<StudentResponse> => {
+  const student = await prisma.student.findFirst({ where: { id: studentId, schoolId } });
+  if (!student) throw notFound('Student not found', 'STUDENT_NOT_FOUND');
+
+  const updated = await prisma.student.update({
+    where:   { id: studentId },
+    data:    { status: RECORD_STATUS.INACTIVE },
+    include: { class: true, section: true },
+  });
+
+  return toStudentResponse(updated);
 };

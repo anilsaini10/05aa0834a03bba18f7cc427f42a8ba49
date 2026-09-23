@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Gender } from '@prisma/client';
+import { RECORD_STATUS_VALUES, RECORD_STATUS_FILTER_VALUES } from '../../../constants';
 
 export const createTeacherSchema = z.object({
   name:                  z.string().min(2, 'Name must be at least 2 characters').max(100),
@@ -30,7 +31,7 @@ export const updateTeacherSchema = z.object({
   experienceYears:  z.coerce.number().int().min(0, 'experienceYears cannot be negative').optional(),
   experienceMonths: z.coerce.number().int().min(0, 'experienceMonths cannot be negative').max(11, 'experienceMonths must be between 0 and 11').optional(),
   subjectsTaught:   z.array(z.string().min(1).max(100)).min(1, 'At least one subject is required').optional(),
-  status:           z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status:           z.enum(RECORD_STATUS_VALUES).optional(),
   // Optional: make this teacher the Class Teacher (homeroom in-charge) of a section.
   classTeacherSectionId: z.string().uuid('Invalid section id').optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
@@ -40,12 +41,15 @@ export const assignSubjectSchema = z.object({
   classId: z.string().uuid('classId is required — which class will this teacher teach this subject in?'),
 });
 
+// status omitted -> only ACTIVE teachers (soft-deleted ones stay hidden
+// from the default list); pass status=INACTIVE or status=ALL to see them.
 export const listTeachersQuerySchema = z.object({
   page:     z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(15),
   search:   z.string().trim().min(1).optional(),
   subject:  z.string().trim().min(1).optional(),
   classId:  z.string().uuid('Invalid class id').optional(),
+  status:   z.enum(RECORD_STATUS_FILTER_VALUES).optional(),
 });
 
 export type CreateTeacherSchema     = z.infer<typeof createTeacherSchema>;

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Gender } from '@prisma/client';
+import { RECORD_STATUS_VALUES } from '../../../constants';
 
 export const createStaffSchema = z.object({
   name:             z.string().min(2, 'Name must be at least 2 characters').max(100),
@@ -25,7 +26,7 @@ export const updateStaffSchema = z.object({
   experienceYears:  z.coerce.number().int().min(0, 'experienceYears cannot be negative').optional(),
   experienceMonths: z.coerce.number().int().min(0, 'experienceMonths cannot be negative').max(11, 'experienceMonths must be between 0 and 11').optional(),
   joiningDate:      z.coerce.date({ errorMap: () => ({ message: 'Invalid joining date' }) }).optional(),
-  status:           z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status:           z.enum(RECORD_STATUS_VALUES).optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 export const listStaffQuerySchema = z.object({
@@ -33,7 +34,7 @@ export const listStaffQuerySchema = z.object({
   pageSize:    z.coerce.number().int().positive().max(100).default(15),
   search:      z.string().trim().min(1).optional(),
   designation: z.string().trim().min(1).optional(),
-  status:      z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status:      z.enum(RECORD_STATUS_VALUES).optional(),
 });
 
 export type CreateStaffSchema     = z.infer<typeof createStaffSchema>;

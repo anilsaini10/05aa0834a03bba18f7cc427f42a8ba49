@@ -1,6 +1,7 @@
 import { Prisma, DayOfWeek } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { changeOwnPassword } from '../../shared/services/account.service';
+import { RECORD_STATUS } from '../../constants';
 import {
   UpdateProfileSchema,
   ListMyStudentsQuerySchema,
@@ -381,7 +382,7 @@ export const getDashboardStats = async (userId: string) => {
 
   const attendance = await Promise.all(teacher.sectionsAsTeacher.map(async (section) => {
     const [totalStudents, markedCount] = await Promise.all([
-      prisma.student.count({ where: { sectionId: section.id, status: 'ACTIVE' } }),
+      prisma.student.count({ where: { sectionId: section.id, status: RECORD_STATUS.ACTIVE } }),
       prisma.attendanceRecord.count({ where: { sectionId: section.id, date } }),
     ]);
     return {

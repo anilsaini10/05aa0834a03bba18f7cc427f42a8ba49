@@ -1,4 +1,5 @@
 import { prisma } from '../../../config/db';
+import { RECORD_STATUS } from '../../../constants';
 import {
   CreateClassSchema,
   AddSectionSchema,
@@ -44,12 +45,14 @@ const notFound = (message: string, code: string) => {
   return err;
 };
 
+// Both _count.students filters are scoped to ACTIVE only — a soft-deleted
+// student shouldn't inflate the class/section's student count.
 const CLASS_INCLUDE = {
-  _count:  { select: { students: true } },
+  _count:  { select: { students: { where: { status: RECORD_STATUS.ACTIVE } } } },
   sections: {
     include: {
       classTeacher: { include: { user: true } },
-      _count:       { select: { students: true } },
+      _count:       { select: { students: { where: { status: RECORD_STATUS.ACTIVE } } } },
     },
     orderBy: { name: 'asc' as const },
   },
@@ -130,7 +133,7 @@ export const addSection = async (
 
   const section = await prisma.section.create({
     data: { name: input.name, capacity: input.capacity, classId },
-    include: { classTeacher: { include: { user: true } }, _count: { select: { students: true } } },
+    include: { classTeacher: { include: { user: true } }, _count: { select: { students: { where: { status: RECORD_STATUS.ACTIVE } } } } },
   });
 
   return {
@@ -207,9 +210,13 @@ export const deleteClass = async (schoolId: string, classId: string): Promise<vo
   const existing = await prisma.class.findFirst({ where: { id: classId, schoolId } });
   if (!existing) throw notFound('Class not found', 'CLASS_NOT_FOUND');
 
+  // Counts ANY status, not just ACTIVE — a soft-deleted student row still
+  // has a real FK to this class, so the DB would refuse the delete either
+  // way (raw FK error) even if only inactive students remain. Preserving
+  // that student's history means this class/section has to stick around too.
   const studentCount = await prisma.student.count({ where: { classId } });
   if (studentCount > 0) {
-    throw conflict('This class has enrolled students — remove/reassign them first', 'CLASS_HAS_STUDENTS');
+    throw conflict('This class has enrolled (or previously enrolled) students — remove/reassign them first', 'CLASS_HAS_STUDENTS');
   }
 
   await prisma.$transaction([
@@ -257,7 +264,7 @@ export const updateSection = async (
   const section = await prisma.section.update({
     where:   { id: sectionId },
     data:    input,
-    include: { classTeacher: { include: { user: true } }, _count: { select: { students: true } } },
+    include: { classTeacher: { include: { user: true } }, _count: { select: { students: { where: { status: RECORD_STATUS.ACTIVE } } } } },
   });
 
   return {
@@ -280,9 +287,12 @@ export const deleteSection = async (schoolId: string, classId: string, sectionId
   const existing = await prisma.section.findFirst({ where: { id: sectionId, classId } });
   if (!existing) throw notFound('Section not found', 'SECTION_NOT_FOUND');
 
+  // Counts ANY status, not just ACTIVE — a soft-deleted student row still
+  // has a real FK to this section, so the DB would refuse the delete
+  // either way (raw FK error) even if only inactive students remain.
   const studentCount = await prisma.student.count({ where: { sectionId } });
   if (studentCount > 0) {
-    throw conflict('This section has enrolled students — remove/reassign them first', 'SECTION_HAS_STUDENTS');
+    throw conflict('This section has enrolled (or previously enrolled) students — remove/reassign them first', 'SECTION_HAS_STUDENTS');
   }
 
   await prisma.section.delete({ where: { id: sectionId } });

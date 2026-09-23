@@ -50,6 +50,21 @@ export const updateHandler = async (
   }
 };
 
+// ── DELETE /admin/students/:studentId — soft delete ────────────
+export const deleteHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const schoolId = (req as any).user.schoolId;
+    const result   = await studentsService.deleteStudent(schoolId, req.params.studentId);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /admin/students ───────────────────────────────────────
 export const listHandler = async (
   req: Request,

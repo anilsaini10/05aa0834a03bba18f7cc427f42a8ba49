@@ -6,6 +6,7 @@ import {
   getByIdHandler,
   assignSubjectHandler,
   removeSubjectAssignmentHandler,
+  deleteHandler,
 } from './teachers.controller';
 import { authGuard } from '../../../middleware/authGuard';
 import { roleGuard } from '../../../middleware/roleGuard';
@@ -18,5 +19,6 @@ router.post('/:teacherId/subjects',                    authGuard, roleGuard('ADM
 router.delete('/:teacherId/subjects/:subjectId/:classId', authGuard, roleGuard('ADMIN'), removeSubjectAssignmentHandler);
 router.get('/:teacherId',    authGuard, roleGuard('ADMIN'), getByIdHandler);
 router.patch('/:teacherId',  authGuard, roleGuard('ADMIN'), updateHandler);
+router.delete('/:teacherId', authGuard, roleGuard('ADMIN'), deleteHandler);
 
 export default router;

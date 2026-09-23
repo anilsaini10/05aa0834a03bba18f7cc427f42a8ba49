@@ -2,6 +2,7 @@ import { Prisma, Teacher, User, TeacherSubject, Subject, Class, Section } from '
 import { prisma } from '../../../config/db';
 import { hashPassword } from '../../../shared/utils/hash';
 import { generateDefaultPassword } from '../../../shared/utils/defaultPassword';
+import { RECORD_STATUS, RECORD_STATUS_FILTER_ALL } from '../../../constants';
 import {
   CreateTeacherSchema,
   UpdateTeacherSchema,
@@ -336,11 +337,14 @@ export const getTeacherById = async (schoolId: string, teacherId: string): Promi
 };
 
 // ── List teachers (paginated, searchable) ────────────────────────
+// status omitted/undefined -> ACTIVE only, so a soft-deleted teacher
+// stays out of the default list; pass status=INACTIVE or status=ALL to see them.
 export const listTeachers = async (schoolId: string, query: ListTeachersQuerySchema) => {
-  const { page, pageSize, search, subject, classId } = query;
+  const { page, pageSize, search, subject, classId, status } = query;
 
   const where: Prisma.TeacherWhereInput = {
     schoolId,
+    ...(status === RECORD_STATUS_FILTER_ALL ? {} : { status: status ?? RECORD_STATUS.ACTIVE }),
     ...(subject ? { subjects: { some: { subject: { name: subject } } } } : {}),
     ...(classId ? { subjects: { some: { classId } } } : {}),
     ...(search ? {
@@ -370,4 +374,34 @@ export const listTeachers = async (schoolId: string, query: ListTeachersQuerySch
     total,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+};
+
+// ── DELETE /admin/teachers/:teacherId — soft delete ────────────────
+// Never a hard delete — a teacher already has TeacherSubject assignments,
+// ClassSchedule periods, homework, attendance-marked records, etc. (all
+// FK-linked), so removing the row would either fail outright or wreck
+// that history.
+//
+// Unlike deleteStudent (which never touches the parent's own login),
+// this DOES disable the teacher's own account: Teacher.status and
+// User.isActive are two separate fields, and login only checks
+// User.isActive — so status alone wouldn't actually block sign-in. Also
+// revokes refresh tokens so it takes effect immediately, not just on
+// next login. Doesn't touch existing subject/class-teacher assignments —
+// admin can reassign those separately if needed.
+export const deleteTeacher = async (schoolId: string, teacherId: string): Promise<TeacherResponse> => {
+  const teacher = await prisma.teacher.findFirst({ where: { id: teacherId, schoolId } });
+  if (!teacher) throw notFound('Teacher not found', 'TEACHER_NOT_FOUND');
+
+  const [updated] = await prisma.$transaction([
+    prisma.teacher.update({
+      where:   { id: teacherId },
+      data:    { status: RECORD_STATUS.INACTIVE },
+      include: TEACHER_INCLUDE,
+    }),
+    prisma.user.update({ where: { id: teacher.userId }, data: { isActive: false } }),
+    prisma.refreshToken.deleteMany({ where: { userId: teacher.userId } }),
+  ]);
+
+  return toTeacherResponse(updated);
 };

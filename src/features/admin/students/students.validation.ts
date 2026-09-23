@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Gender } from '@prisma/client';
+import { RECORD_STATUS_VALUES, RECORD_STATUS_FILTER_VALUES } from '../../../constants';
 
 export const createStudentSchema = z.object({
   name:        z.string().min(2, 'Name must be at least 2 characters').max(100),
@@ -27,19 +28,22 @@ export const updateStudentSchema = z.object({
   parentEmail: z.string().email('Invalid parent email address').optional(),
   bloodGroup:  z.string().max(10).optional(),
   address:     z.string().max(300).optional(),
-  status:      z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status:      z.enum(RECORD_STATUS_VALUES).optional(),
 })
   .refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' })
   .refine(data => !data.classId || data.sectionId, {
     message: 'sectionId is required when changing classId', path: ['sectionId'],
   });
 
+// status omitted -> only ACTIVE students (soft-deleted ones stay hidden
+// from the default list); pass status=INACTIVE or status=ALL to see them.
 export const listStudentsQuerySchema = z.object({
   page:      z.coerce.number().int().positive().default(1),
   pageSize:  z.coerce.number().int().positive().max(100).default(15),
   search:    z.string().trim().min(1).optional(),
   classId:   z.string().uuid('Invalid class id').optional(),
   sectionId: z.string().uuid('Invalid section id').optional(),
+  status:    z.enum(RECORD_STATUS_FILTER_VALUES).optional(),
 });
 
 export type CreateStudentSchema     = z.infer<typeof createStudentSchema>;

@@ -1,6 +1,7 @@
 import { Prisma, Announcement, User } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import { notifyAudience } from '../../notifications/notifications.service';
+import { ANNOUNCEMENT_STATUS, AnnouncementStatus, NOTIFICATION_TYPE } from '../../../constants';
 import {
   CreateAnnouncementSchema,
   UpdateAnnouncementSchema,
@@ -17,7 +18,7 @@ export interface AnnouncementResponse {
   eventDate: Date | null;
   publishAt: Date | null;
   expiresAt: Date | null;
-  status:    'SCHEDULED' | 'ACTIVE' | 'EXPIRED';
+  status:    AnnouncementStatus;
   createdBy: { id: string; name: string };
   createdAt: Date;
   updatedAt: Date;
@@ -37,11 +38,11 @@ const badRequest = (message: string, code: string) => {
   return err;
 };
 
-const computeStatus = (publishAt: Date | null, expiresAt: Date | null): 'SCHEDULED' | 'ACTIVE' | 'EXPIRED' => {
+const computeStatus = (publishAt: Date | null, expiresAt: Date | null): AnnouncementStatus => {
   const now = new Date();
-  if (publishAt && now < publishAt) return 'SCHEDULED';
-  if (expiresAt && now > expiresAt) return 'EXPIRED';
-  return 'ACTIVE';
+  if (publishAt && now < publishAt) return ANNOUNCEMENT_STATUS.SCHEDULED;
+  if (expiresAt && now > expiresAt) return ANNOUNCEMENT_STATUS.EXPIRED;
+  return ANNOUNCEMENT_STATUS.ACTIVE;
 };
 
 const toResponse = (a: AnnouncementWithCreator): AnnouncementResponse => ({
@@ -88,7 +89,7 @@ export const createAnnouncement = async (
     await notifyAudience(schoolId, announcement.audience, {
       title: announcement.title,
       body:  announcement.message,
-      data:  { type: 'ANNOUNCEMENT', announcementId: announcement.id },
+      data:  { type: NOTIFICATION_TYPE.ANNOUNCEMENT, announcementId: announcement.id },
     });
   }
 
@@ -174,7 +175,7 @@ export const updateAnnouncement = async (
     await notifyAudience(schoolId, announcement.audience, {
       title: announcement.title,
       body:  announcement.message,
-      data:  { type: 'ANNOUNCEMENT', announcementId: announcement.id },
+      data:  { type: NOTIFICATION_TYPE.ANNOUNCEMENT, announcementId: announcement.id },
     });
   }
 

@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import { notifyUser } from '../../notifications/notifications.service';
+import { NOTIFICATION_TYPE } from '../../../constants';
 import { ListLeaveQuerySchema, ReviewLeaveSchema, ListTeacherLeaveQuerySchema } from './leave.validation';
 
 const toDateOnly   = (d: Date): Date   => new Date(d.toISOString().slice(0, 10));
@@ -129,7 +130,7 @@ export const reviewLeaveRequest = async (
   await notifyUser(updated.appliedBy, {
     title: `Leave Request ${input.status === 'APPROVED' ? 'Approved' : 'Rejected'}`,
     body:  `${updated.student.name}'s leave (${toDateString(updated.fromDate)} - ${toDateString(updated.toDate)}) has been ${input.status.toLowerCase()}.`,
-    data:  { type: 'LEAVE_REQUEST', leaveId: updated.id },
+    data:  { type: NOTIFICATION_TYPE.LEAVE_REQUEST, leaveId: updated.id },
   });
 
   return toLeaveResponse(updated);
@@ -203,7 +204,7 @@ export const reviewTeacherLeaveRequest = async (
   await notifyUser(updated.teacher.userId, {
     title: `Leave Request ${input.status === 'APPROVED' ? 'Approved' : 'Rejected'}`,
     body:  `Your leave (${toDateString(updated.fromDate)} - ${toDateString(updated.toDate)}) has been ${input.status.toLowerCase()}.`,
-    data:  { type: 'TEACHER_LEAVE_REQUEST', leaveId: updated.id },
+    data:  { type: NOTIFICATION_TYPE.TEACHER_LEAVE_REQUEST, leaveId: updated.id },
   });
 
   return toTeacherLeaveResponse(updated);

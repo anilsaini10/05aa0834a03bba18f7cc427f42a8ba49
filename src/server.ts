@@ -49,10 +49,12 @@ const startServer = async (): Promise<void> => {
     console.log('  GET  /api/admin/students');
     console.log('  GET  /api/admin/students/:studentId');
     console.log('  PATCH /api/admin/students/:studentId');
+    console.log('  DELETE /api/admin/students/:studentId');
     console.log('  POST /api/admin/teachers');
     console.log('  GET  /api/admin/teachers');
     console.log('  GET  /api/admin/teachers/:teacherId');
     console.log('  PATCH /api/admin/teachers/:teacherId');
+    console.log('  DELETE /api/admin/teachers/:teacherId');
     console.log('  POST /api/admin/teachers/:teacherId/subjects');
     console.log('  DELETE /api/admin/teachers/:teacherId/subjects/:subjectId/:classId');
     console.log('  POST /api/admin/announcements');

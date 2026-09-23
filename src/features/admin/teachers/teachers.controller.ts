@@ -88,6 +88,21 @@ export const getByIdHandler = async (
   }
 };
 
+// ── DELETE /admin/teachers/:teacherId — soft delete ────────────
+export const deleteHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const schoolId = (req as any).user.schoolId;
+    const result   = await teachersService.deleteTeacher(schoolId, req.params.teacherId);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /admin/teachers ───────────────────────────────────────
 export const listHandler = async (
   req: Request,

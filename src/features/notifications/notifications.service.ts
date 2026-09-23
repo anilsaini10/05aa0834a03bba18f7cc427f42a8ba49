@@ -2,6 +2,7 @@ import { Platform, AnnouncementAudience, Role, Prisma } from '@prisma/client';
 import { getMessaging } from 'firebase-admin/messaging';
 import { prisma }   from '../../config/db';
 import { isFirebaseReady } from '../../config/firebase';
+import { NOTIFICATION_TYPE } from '../../constants';
 import { ListNotificationsQuerySchema } from './notifications.validation';
 
 export interface PushPayload {
@@ -114,7 +115,7 @@ export const sendToUser = async (
 //    call site needs to change when this was added.
 const persistNotifications = async (userIds: string[], payload: PushPayload): Promise<void> => {
   if (userIds.length === 0) return;
-  const type = payload.data?.type ?? 'GENERAL';
+  const type = payload.data?.type ?? NOTIFICATION_TYPE.GENERAL;
   await prisma.notification.createMany({
     data: userIds.map(userId => ({
       userId,
