@@ -2,6 +2,7 @@ import { Prisma, DayOfWeek } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { changeOwnPassword } from '../../shared/services/account.service';
 import { RECORD_STATUS } from '../../constants';
+import { computeHomeworkStatus } from '../../shared/utils/homeworkStatus';
 import {
   UpdateProfileSchema,
   ListMyStudentsQuerySchema,
@@ -40,6 +41,13 @@ const forbidden = (message: string, code: string) => {
   const err = new Error(message) as any;
   err.code       = code;
   err.statusCode = 403;
+  return err;
+};
+
+const badRequest = (message: string, code: string) => {
+  const err = new Error(message) as any;
+  err.code       = code;
+  err.statusCode = 400;
   return err;
 };
 
@@ -609,7 +617,10 @@ const toHomeworkResponse = (hw: any) => ({
   title:       hw.title,
   description: hw.description,
   type:        hw.type,
+  fromDate:    hw.fromDate,
   dueDate:     hw.dueDate,
+  status:      computeHomeworkStatus(hw.fromDate, hw.status),
+  isActive:    hw.isActive,
   createdBy:   { id: hw.createdByUser.id, name: hw.createdByUser.name },
   createdAt:   hw.createdAt,
   updatedAt:   hw.updatedAt,
@@ -640,6 +651,7 @@ export const createHomework = async (userId: string, input: CreateHomeworkSchema
       title:       input.title,
       description: input.description ?? null,
       type:        input.type,
+      fromDate:    input.fromDate ?? null,
       dueDate:     input.dueDate,
       createdBy:   userId,
     },
@@ -650,11 +662,14 @@ export const createHomework = async (userId: string, input: CreateHomeworkSchema
 };
 
 // ── GET /teacher/homework — homework I created ─────────────────
+// includeInactive omitted/false -> only non-deleted homework, so a
+// soft-deleted one stays out of the default list.
 export const listMyHomework = async (userId: string, query: ListMyHomeworkQuerySchema) => {
-  const { page, pageSize, search, classId, sectionId, subjectId } = query;
+  const { page, pageSize, search, classId, sectionId, subjectId, includeInactive } = query;
 
   const where: Prisma.HomeworkWhereInput = {
     createdBy: userId,
+    ...(includeInactive ? {} : { isActive: true }),
     ...(classId ? { classId } : {}),
     ...(sectionId ? { sectionId } : {}),
     ...(subjectId ? { subjectId } : {}),
@@ -712,8 +727,16 @@ export const updateHomework = async (
   homeworkId: string,
   input: UpdateHomeworkSchema,
 ) => {
-  const teacher = await getTeacherByUserId(userId);
-  await requireOwnHomework(userId, teacher.schoolId, homeworkId);
+  const teacher  = await getTeacherByUserId(userId);
+  const existing = await requireOwnHomework(userId, teacher.schoolId, homeworkId);
+
+  // Cross-check the merged (existing + incoming) date range — zod can only
+  // validate fields present in this single request, not against the DB row.
+  const fromDate = input.fromDate !== undefined ? input.fromDate : existing.fromDate;
+  const dueDate  = input.dueDate  !== undefined ? input.dueDate  : existing.dueDate;
+  if (fromDate && dueDate < fromDate) {
+    throw badRequest('dueDate must be on or after fromDate', 'INVALID_DATE_RANGE');
+  }
 
   const homework = await prisma.homework.update({
     where:   { id: homeworkId },
@@ -724,12 +747,23 @@ export const updateHomework = async (
   return toHomeworkResponse(homework);
 };
 
-// ── DELETE /teacher/homework/:homeworkId ────────────────────────
-export const deleteHomework = async (userId: string, homeworkId: string): Promise<void> => {
+// ── DELETE /teacher/homework/:homeworkId — soft delete ──────────────
+// Never a hard delete — a homework already has HomeworkSubmission rows
+// (per-student tracking), so removing it would wreck that history.
+// Marking isActive: false drops it out of the default list; GET-by-id
+// still resolves it (a teacher can still view/restore their own deleted
+// homework), same as the student/teacher soft-delete pattern.
+export const deleteHomework = async (userId: string, homeworkId: string) => {
   const teacher = await getTeacherByUserId(userId);
   await requireOwnHomework(userId, teacher.schoolId, homeworkId);
 
-  await prisma.homework.delete({ where: { id: homeworkId } });
+  const homework = await prisma.homework.update({
+    where:   { id: homeworkId },
+    data:    { isActive: false },
+    include: HOMEWORK_INCLUDE,
+  });
+
+  return toHomeworkResponse(homework);
 };
 
 // ── GET /teacher/homework/:homeworkId/students ──────────────────

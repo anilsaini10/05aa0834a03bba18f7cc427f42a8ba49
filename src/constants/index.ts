@@ -41,6 +41,28 @@ export const ANNOUNCEMENT_STATUS = {
 
 export type AnnouncementStatus = (typeof ANNOUNCEMENT_STATUS)[keyof typeof ANNOUNCEMENT_STATUS];
 
+// ── Homework lifecycle status ─────────────────────────────────────
+// SCHEDULED is COMPUTED, never stored — a homework with a future
+// `fromDate` is SCHEDULED regardless of what's in the `status` column
+// (mirrors ANNOUNCEMENT_STATUS's computeStatus pattern). The DB column
+// only ever holds one of HOMEWORK_MANUAL_STATUS_VALUES; teachers set
+// those manually (via update), SCHEDULED is derived at read-time by
+// computeHomeworkStatus (src/shared/utils/homeworkStatus.ts).
+export const HOMEWORK_STATUS = {
+  SCHEDULED:   'SCHEDULED',
+  ACTIVE:      'ACTIVE',
+  IN_PROGRESS: 'IN_PROGRESS',
+  COMPLETED:   'COMPLETED',
+} as const;
+
+export type HomeworkStatus = (typeof HOMEWORK_STATUS)[keyof typeof HOMEWORK_STATUS];
+
+export const HOMEWORK_MANUAL_STATUS_VALUES = [
+  HOMEWORK_STATUS.ACTIVE,
+  HOMEWORK_STATUS.IN_PROGRESS,
+  HOMEWORK_STATUS.COMPLETED,
+] as const;
+
 // ── Notification `type` values ────────────────────────────────────
 // Notification.type is a plain string column ON PURPOSE (see
 // notifications.service.ts) — new features can introduce a new type

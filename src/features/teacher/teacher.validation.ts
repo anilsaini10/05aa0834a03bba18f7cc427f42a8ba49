@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AttendanceStatus, HomeworkType, HomeworkSubmissionStatus, LeaveStatus, EventType } from '@prisma/client';
+import { HOMEWORK_MANUAL_STATUS_VALUES } from '../../constants';
 
 export const updateProfileSchema = z.object({
   name:  z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
@@ -82,6 +83,10 @@ export const listMyAttendanceRecordsQuerySchema = z.object({
   });
 
 // ── Homework ──────────────────────────────────────────────────
+// fromDate is optional — when omitted, the homework is immediately ACTIVE.
+// When set, it's purely a frontend/display signal for "don't reveal this
+// to the class until this date" (the app handles that visibility itself);
+// the backend just tracks it and computes status: SCHEDULED for it.
 export const createHomeworkSchema = z.object({
   classId:     z.string().uuid('Invalid class id'),
   sectionId:   z.string().uuid('Invalid section id'),
@@ -89,15 +94,28 @@ export const createHomeworkSchema = z.object({
   title:       z.string().min(2, 'Title must be at least 2 characters').max(200),
   description: z.string().max(2000).optional(),
   type:        z.nativeEnum(HomeworkType).default('ASSIGNMENT'),
+  fromDate:    z.coerce.date({ errorMap: () => ({ message: 'Invalid from date' }) }).optional(),
   dueDate:     z.coerce.date({ errorMap: () => ({ message: 'Invalid due date' }) }),
-});
+}).refine(
+  data => !data.fromDate || data.dueDate >= data.fromDate,
+  { message: 'dueDate must be on or after fromDate', path: ['dueDate'] },
+);
 
+// status is manual-only (ACTIVE/IN_PROGRESS/COMPLETED) — SCHEDULED is
+// computed from fromDate and can never be set directly here.
 export const updateHomeworkSchema = z.object({
   title:       z.string().min(2, 'Title must be at least 2 characters').max(200).optional(),
   description: z.string().max(2000).optional(),
   type:        z.nativeEnum(HomeworkType).optional(),
+  fromDate:    z.coerce.date({ errorMap: () => ({ message: 'Invalid from date' }) }).optional(),
   dueDate:     z.coerce.date({ errorMap: () => ({ message: 'Invalid due date' }) }).optional(),
-}).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
+  status:      z.enum(HOMEWORK_MANUAL_STATUS_VALUES).optional(),
+})
+  .refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' })
+  .refine(
+    data => !data.fromDate || !data.dueDate || data.dueDate >= data.fromDate,
+    { message: 'dueDate must be on or after fromDate', path: ['dueDate'] },
+  );
 
 const homeworkSubmissionInput = z.object({
   studentId: z.string().uuid('Invalid student id'),
@@ -109,13 +127,16 @@ export const markHomeworkSubmissionsSchema = z.object({
   records: z.array(homeworkSubmissionInput).min(1, 'At least one record is required'),
 });
 
+// includeInactive omitted/false -> only non-deleted homework (default);
+// pass includeInactive=true to also see soft-deleted ones.
 export const listMyHomeworkQuerySchema = z.object({
-  page:      z.coerce.number().int().positive().default(1),
-  pageSize:  z.coerce.number().int().positive().max(100).default(15),
-  search:    z.string().trim().min(1).optional(),
-  classId:   z.string().uuid('Invalid class id').optional(),
-  sectionId: z.string().uuid('Invalid section id').optional(),
-  subjectId: z.string().uuid('Invalid subject id').optional(),
+  page:            z.coerce.number().int().positive().default(1),
+  pageSize:        z.coerce.number().int().positive().max(100).default(15),
+  search:          z.string().trim().min(1).optional(),
+  classId:         z.string().uuid('Invalid class id').optional(),
+  sectionId:       z.string().uuid('Invalid section id').optional(),
+  subjectId:       z.string().uuid('Invalid subject id').optional(),
+  includeInactive: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
 });
 
 // ── Leave requests (review only — applying is a parent action) ──

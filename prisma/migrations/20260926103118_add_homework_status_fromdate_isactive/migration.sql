@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "homework" ADD COLUMN     "fromDate" TIMESTAMP(3),
+ADD COLUMN     "isActive" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "status" TEXT NOT NULL DEFAULT 'ACTIVE';

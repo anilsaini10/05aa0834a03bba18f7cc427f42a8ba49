@@ -350,7 +350,21 @@ model Homework {
   title         String
   description   String?
   type          HomeworkType @default(ASSIGNMENT)
+  // Optional — when set, the frontend uses it to decide when to reveal
+  // this homework to the class. While it's still in the future, the
+  // computed status is SCHEDULED regardless of the `status` column below
+  // (see src/shared/utils/homeworkStatus.ts).
+  fromDate      DateTime?
   dueDate       DateTime
+  // Teacher-managed progress marker — only ever ACTIVE/IN_PROGRESS/COMPLETED
+  // are actually stored here; SCHEDULED is computed, never written (see
+  // computeHomeworkStatus). Deliberately separate from `isActive` below —
+  // that's the soft-delete flag, this is the workflow stage.
+  status        String       @default("ACTIVE")
+  // Soft delete — see deleteHomework in teacher.service.ts. Kept as its
+  // own boolean (not folded into `status`) so "deleted" can never be
+  // confused with "not yet started" or any other workflow stage.
+  isActive      Boolean      @default(true)
   createdBy     String
   createdByUser User         @relation(fields: [createdBy], references: [id])
   createdAt     DateTime     @default(now())

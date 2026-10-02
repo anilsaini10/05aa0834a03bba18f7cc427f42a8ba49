@@ -1,6 +1,7 @@
 import { Prisma, DayOfWeek } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { changeOwnPassword } from '../../shared/services/account.service';
+import { computeHomeworkStatus } from '../../shared/utils/homeworkStatus';
 import {
   UpdateProfileSchema,
   ListMyAnnouncementsQuerySchema,
@@ -399,13 +400,17 @@ const toChildHomeworkResponse = (hw: any) => ({
   title:       hw.title,
   description: hw.description,
   type:        hw.type,
+  fromDate:    hw.fromDate,
   dueDate:     hw.dueDate,
+  status:      computeHomeworkStatus(hw.fromDate, hw.status),
   teacherName: hw.createdByUser.name,
   createdAt:   hw.createdAt,
   updatedAt:   hw.updatedAt,
 });
 
 // ── GET /students/homework ────────────────────────────────────
+// isActive is always true here (never a filter option for parents) — a
+// homework the teacher soft-deleted should never appear in a child's view.
 export const listMyChildHomework = async (userId: string, query: ListMyChildHomeworkQuerySchema) => {
   const student = await requireOwnChild(userId, query.studentId);
   const { page, pageSize, subjectId } = query;
@@ -413,6 +418,7 @@ export const listMyChildHomework = async (userId: string, query: ListMyChildHome
   const where: Prisma.HomeworkWhereInput = {
     classId:   student.classId,
     sectionId: student.sectionId,
+    isActive:  true,
     ...(subjectId ? { subjectId } : {}),
   };
 
@@ -445,7 +451,7 @@ export const getMyChildHomework = async (
   const student = await requireOwnChild(userId, query.studentId);
 
   const homework = await prisma.homework.findFirst({
-    where:   { id: homeworkId, classId: student.classId, sectionId: student.sectionId },
+    where:   { id: homeworkId, classId: student.classId, sectionId: student.sectionId, isActive: true },
     include: HOMEWORK_INCLUDE,
   });
   if (!homework) throw notFound('Homework not found', 'HOMEWORK_NOT_FOUND');

@@ -297,8 +297,8 @@ export const deleteHomeworkHandler = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    await teacherService.deleteHomework((req as any).user.sub, req.params.homeworkId);
-    sendSuccess(res, { message: 'Homework deleted successfully' });
+    const result = await teacherService.deleteHomework((req as any).user.sub, req.params.homeworkId);
+    sendSuccess(res, result);
   } catch (err) {
     next(err);
   }
