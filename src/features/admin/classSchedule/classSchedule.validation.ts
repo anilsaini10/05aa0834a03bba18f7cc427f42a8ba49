@@ -6,12 +6,14 @@ const timeString = z.string().regex(
   'Time must be in 24-hour HH:MM format (e.g. "09:00")',
 );
 
+// periodNo is NOT part of this input — it's auto-assigned by the server
+// from chronological order of startTime within the section's day (see
+// renumberSectionDay in classSchedule.service.ts). Admin never sets it.
 export const createScheduleSchema = z.object({
   classId:   z.string().uuid('Invalid class id'),
   sectionId: z.string().uuid('Invalid section id'),
   day:       z.nativeEnum(DayOfWeek),
   type:      z.nativeEnum(ScheduleType),
-  periodNo:  z.coerce.number().int().positive('periodNo must be a positive integer'),
   subjectId: z.string().uuid('Invalid subject id').optional(),
   teacherId: z.string().uuid('Invalid teacher id').optional(),
   roomNo:    z.string().max(50).optional(),
@@ -32,9 +34,10 @@ export const createScheduleSchema = z.object({
     message: 'title is required for BREAK entries (e.g. "Lunch Break")', path: ['title'],
   });
 
+// periodNo still isn't settable here either — moving a schedule entry's
+// day/startTime/endTime re-triggers auto-renumbering instead.
 export const updateScheduleSchema = z.object({
   day:       z.nativeEnum(DayOfWeek).optional(),
-  periodNo:  z.coerce.number().int().positive('periodNo must be a positive integer').optional(),
   subjectId: z.string().uuid('Invalid subject id').optional(),
   teacherId: z.string().uuid('Invalid teacher id').optional(),
   roomNo:    z.string().max(50).optional(),

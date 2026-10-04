@@ -1,4 +1,4 @@
-import { Prisma, ClassSchedule, Class, Section, Subject, Teacher, User } from '@prisma/client';
+import { Prisma, ClassSchedule, Class, Section, Subject, Teacher, User, DayOfWeek } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import {
   CreateScheduleSchema,
@@ -115,8 +115,9 @@ interface ConflictCheckInput {
 const runConflictChecks = async (input: ConflictCheckInput): Promise<void> => {
   const exclude = input.excludeId ? { NOT: { id: input.excludeId } } : {};
 
-  // 1. Same section, same day — no two periods/breaks may overlap in time,
-  //    regardless of periodNo (catches admin mistakes with mismatched numbering).
+  // 1. Same section, same day — no two periods/breaks may overlap in time.
+  //    (periodNo is no longer user-supplied, so there's nothing to check it
+  //    against — see renumberSectionDay, which keeps it correct automatically.)
   const sectionEntries = await prisma.classSchedule.findMany({
     where: { sectionId: input.sectionId, day: input.day as any, ...exclude },
   });
@@ -156,6 +157,46 @@ const runConflictChecks = async (input: ConflictCheckInput): Promise<void> => {
   }
 };
 
+// ── Keep periodNo = chronological rank (1, 2, 3, ... no gaps) within one
+//    section's day — called after any write that could change the set or
+//    order of entries for that section+day (create, delete, or an update
+//    that touches day/startTime/endTime). Only writes rows whose periodNo
+//    actually changed, so appending at the end costs just 1 write, not N.
+//    Safe to call with a day that now has zero entries (e.g. after a
+//    delete or a day-change) — findMany just returns [] and we no-op.
+//
+// Two phases, not one: the DB has a UNIQUE(sectionId, day, periodNo)
+// index, and Postgres checks unique constraints per-statement (not
+// deferred) — so reshuffling straight to final values in a single pass can
+// transiently try to write a number another row is still sitting on (e.g.
+// inserting a period that becomes the new #1 while the old #1 hasn't
+// moved to #2 yet). Landing everything on a distinct negative placeholder
+// first sidesteps that entirely, since real periodNo is always positive.
+const renumberSectionDay = async (
+  tx:        Prisma.TransactionClient,
+  sectionId: string,
+  day:       DayOfWeek,
+): Promise<void> => {
+  const entries = await tx.classSchedule.findMany({
+    where:   { sectionId, day },
+    orderBy: { startTime: 'asc' },
+    select:  { id: true, periodNo: true },
+  });
+
+  const updates = entries
+    .map((e, idx) => ({ id: e.id, correctPeriodNo: idx + 1, currentPeriodNo: e.periodNo }))
+    .filter(e => e.currentPeriodNo !== e.correctPeriodNo);
+
+  if (updates.length === 0) return;
+
+  await Promise.all(
+    updates.map((u, i) => tx.classSchedule.update({ where: { id: u.id }, data: { periodNo: -1 - i } })),
+  );
+  await Promise.all(
+    updates.map(u => tx.classSchedule.update({ where: { id: u.id }, data: { periodNo: u.correctPeriodNo } })),
+  );
+};
+
 // ── Create a schedule entry (class period or break) ─────────────────
 export const createSchedule = async (
   schoolId: string,
@@ -174,20 +215,17 @@ export const createSchedule = async (
   if (input.type === 'CLASS_PERIOD') {
     // Subject match only — a teacher assigned to a subject in ANY class can be
     // scheduled for that subject in ANY other class too, as long as the usual
-    // time/teacher/room availability checks below still pass.
+    // time/teacher/room availability checks below still pass. This is why we
+    // also upsert a TeacherSubject row for THIS class below once scheduled —
+    // otherwise the teacher's own "my classes"/"my students" views (which
+    // are keyed strictly off TeacherSubject.classId) would never pick up a
+    // class they only ever got into via a schedule entry.
     const teaches = await prisma.teacherSubject.findFirst({
       where: { teacherId: input.teacherId!, subjectId: input.subjectId! },
     });
     if (!teaches) {
       throw forbidden('This teacher does not teach this subject', 'SUBJECT_NOT_ASSIGNED');
     }
-  }
-
-  const dupPeriod = await prisma.classSchedule.findFirst({
-    where: { sectionId: input.sectionId, day: input.day, periodNo: input.periodNo },
-  });
-  if (dupPeriod) {
-    throw conflict('This period number already exists for this section on this day', 'PERIOD_NO_TAKEN');
   }
 
   await runConflictChecks({
@@ -199,23 +237,48 @@ export const createSchedule = async (
     endTime:   input.endTime,
   });
 
-  const schedule = await prisma.classSchedule.create({
-    data: {
-      schoolId,
-      classId:   input.classId,
-      sectionId: input.sectionId,
-      day:       input.day,
-      type:      input.type,
-      periodNo:  input.periodNo,
-      subjectId: input.subjectId ?? null,
-      teacherId: input.teacherId ?? null,
-      roomNo:    input.roomNo ?? null,
-      title:     input.title ?? null,
-      startTime: input.startTime,
-      endTime:   input.endTime,
-      createdBy: userId,
-    },
-    include: SCHEDULE_INCLUDE,
+  const schedule = await prisma.$transaction(async (tx) => {
+    if (input.type === 'CLASS_PERIOD') {
+      await tx.teacherSubject.upsert({
+        where: {
+          teacherId_subjectId_classId: {
+            teacherId: input.teacherId!,
+            subjectId: input.subjectId!,
+            classId:   input.classId,
+          },
+        },
+        update: {},
+        create: { teacherId: input.teacherId!, subjectId: input.subjectId!, classId: input.classId },
+      });
+    }
+
+    const created = await tx.classSchedule.create({
+      data: {
+        schoolId,
+        classId:   input.classId,
+        sectionId: input.sectionId,
+        day:       input.day,
+        type:      input.type,
+        // Placeholder — must be negative, since any positive number could
+        // already be taken by an existing row in this section+day and
+        // collide with the UNIQUE(sectionId, day, periodNo) index right
+        // here at insert time (before renumberSectionDay even runs).
+        // Corrected to its real chronological rank below, in the same
+        // transaction, so it's never visible externally with this value.
+        periodNo:  -1,
+        subjectId: input.subjectId ?? null,
+        teacherId: input.teacherId ?? null,
+        roomNo:    input.roomNo ?? null,
+        title:     input.title ?? null,
+        startTime: input.startTime,
+        endTime:   input.endTime,
+        createdBy: userId,
+      },
+    });
+
+    await renumberSectionDay(tx, input.sectionId, input.day);
+
+    return tx.classSchedule.findUniqueOrThrow({ where: { id: created.id }, include: SCHEDULE_INCLUDE });
   });
 
   return toScheduleResponse(schedule);
@@ -231,10 +294,14 @@ export const listSchedule = async (schoolId: string, query: ListScheduleQuerySch
     ...(query.teacherId ? { teacherId: query.teacherId } : {}),
   };
 
+  // Sorted by startTime, not periodNo — this list isn't scoped to one
+  // section unless the caller passed sectionId, and periodNo is only a
+  // valid ordering within a single section (see getTodaySchedule in
+  // teacher.service.ts for the full reasoning).
   const entries = await prisma.classSchedule.findMany({
     where,
     include: SCHEDULE_INCLUDE,
-    orderBy: [{ day: 'asc' }, { periodNo: 'asc' }],
+    orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
   });
 
   return entries.map(toScheduleResponse);
@@ -279,17 +346,7 @@ export const updateSchedule = async (
     }
   }
 
-  const day      = input.day ?? existing.day;
-  const periodNo = input.periodNo ?? existing.periodNo;
-
-  if (input.day !== undefined || input.periodNo !== undefined) {
-    const dupPeriod = await prisma.classSchedule.findFirst({
-      where: { sectionId: existing.sectionId, day, periodNo, NOT: { id: scheduleId } },
-    });
-    if (dupPeriod) {
-      throw conflict('This period number already exists for this section on this day', 'PERIOD_NO_TAKEN');
-    }
-  }
+  const day = input.day ?? existing.day;
 
   await runConflictChecks({
     sectionId: existing.sectionId,
@@ -301,10 +358,41 @@ export const updateSchedule = async (
     excludeId: scheduleId,
   });
 
-  const schedule = await prisma.classSchedule.update({
-    where:   { id: scheduleId },
-    data:    input,
-    include: SCHEDULE_INCLUDE,
+  // Renumbering is only needed when this entry's position within a
+  // section+day could have shifted — i.e. its day or time changed.
+  // Editing just title/subject/teacher/room never moves anything.
+  const dayChanged      = input.day !== undefined && input.day !== existing.day;
+  const timeOrDayChanged = dayChanged || input.startTime !== undefined || input.endTime !== undefined;
+
+  const schedule = await prisma.$transaction(async (tx) => {
+    if (existing.type === 'CLASS_PERIOD' && (input.subjectId || input.teacherId)) {
+      // Same auto-registration as createSchedule — reassigning the
+      // teacher/subject on this period should make it show up in that
+      // teacher's own "my classes" view too.
+      await tx.teacherSubject.upsert({
+        where: {
+          teacherId_subjectId_classId: {
+            teacherId: teacherId!,
+            subjectId: subjectId!,
+            classId:   existing.classId,
+          },
+        },
+        update: {},
+        create: { teacherId: teacherId!, subjectId: subjectId!, classId: existing.classId },
+      });
+    }
+
+    await tx.classSchedule.update({ where: { id: scheduleId }, data: input });
+
+    if (timeOrDayChanged) {
+      if (dayChanged) {
+        // Close the gap left behind in the OLD day this entry just moved out of.
+        await renumberSectionDay(tx, existing.sectionId, existing.day);
+      }
+      await renumberSectionDay(tx, existing.sectionId, day);
+    }
+
+    return tx.classSchedule.findUniqueOrThrow({ where: { id: scheduleId }, include: SCHEDULE_INCLUDE });
   });
 
   return toScheduleResponse(schedule);
@@ -315,7 +403,12 @@ export const deleteSchedule = async (schoolId: string, scheduleId: string): Prom
   const existing = await prisma.classSchedule.findFirst({ where: { id: scheduleId, schoolId } });
   if (!existing) throw notFound('Schedule entry not found', 'SCHEDULE_NOT_FOUND');
 
-  await prisma.classSchedule.delete({ where: { id: scheduleId } });
+  // Close the gap left behind so periodNo stays a continuous 1..N for
+  // whatever remains in this section's day.
+  await prisma.$transaction(async (tx) => {
+    await tx.classSchedule.delete({ where: { id: scheduleId } });
+    await renumberSectionDay(tx, existing.sectionId, existing.day);
+  });
 };
 
 // ── A section's full weekly timetable, grouped by day ────────────
@@ -356,10 +449,13 @@ export const getTeacherTimetable = async (schoolId: string, teacherId: string) =
   });
   if (!teacher) throw notFound('Teacher not found', 'TEACHER_NOT_FOUND');
 
+  // Sorted by startTime, not periodNo — this spans every section the
+  // teacher has a period in, and periodNo only means anything within one
+  // section (see getTodaySchedule in teacher.service.ts for the full reasoning).
   const entries = await prisma.classSchedule.findMany({
     where:   { teacherId },
     include: SCHEDULE_INCLUDE,
-    orderBy: [{ day: 'asc' }, { periodNo: 'asc' }],
+    orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
   });
 
   const timetable: Record<string, ScheduleResponse[]> = {};

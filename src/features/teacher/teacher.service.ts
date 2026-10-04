@@ -408,6 +408,13 @@ export const getDashboardStats = async (userId: string) => {
 };
 
 // ── GET /teacher/schedule/today ─────────────────────────────────
+// Sorted by startTime, not periodNo — periodNo is only a valid ordering
+// *within one section*, and a teacher's day here spans multiple different
+// sections/classes, each with their own independent periodNo numbering.
+// Sorting by periodNo would interleave them in a meaningless order (e.g.
+// another section's "period 1" at 09:00 could sort before this one's
+// "period 2" at 08:00). Real clock time is the only thing comparable
+// across sections.
 export const getTodaySchedule = async (userId: string) => {
   const teacher = await getTeacherByUserId(userId);
   const day = DAY_BY_JS_INDEX[new Date().getDay()];
@@ -415,7 +422,7 @@ export const getTodaySchedule = async (userId: string) => {
   const entries = await prisma.classSchedule.findMany({
     where:   { teacherId: teacher.id, day },
     include: MY_SCHEDULE_INCLUDE,
-    orderBy: { periodNo: 'asc' },
+    orderBy: { startTime: 'asc' },
   });
 
   return {
@@ -426,13 +433,15 @@ export const getTodaySchedule = async (userId: string) => {
 };
 
 // ── GET /teacher/schedule/week — Monday to Saturday, grouped by day ──
+// Same reasoning as getTodaySchedule above — sort by startTime, not
+// periodNo, since this also spans multiple sections per day.
 export const getWeekSchedule = async (userId: string) => {
   const teacher = await getTeacherByUserId(userId);
 
   const entries = await prisma.classSchedule.findMany({
     where:   { teacherId: teacher.id, day: { in: WEEK_DAYS } },
     include: MY_SCHEDULE_INCLUDE,
-    orderBy: { periodNo: 'asc' },
+    orderBy: { startTime: 'asc' },
   });
 
   const timetable: Record<string, ReturnType<typeof toMyScheduleEntry>[]> = {};
