@@ -10,7 +10,14 @@
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:generate": "npx prisma generate",
     "prisma:studio": "npx prisma studio",
-    "create-super-admin": "ts-node scripts/create-super-admin.ts"
+    "create-super-admin": "ts-node scripts/create-super-admin.ts",
+    "dev:live": "node scripts/with-env.js .env.live ts-node-dev --respawn --transpile-only src/server.ts",
+    "studio:local": "prisma studio --port 5560",
+    "studio:live": "node scripts/with-env.js .env.live prisma studio --port 5561",
+    "migrate:live": "node scripts/with-env.js .env.live prisma migrate deploy",
+    "migrate:status:live": "node scripts/with-env.js .env.live prisma migrate status",
+    "create-super-admin:live": "node scripts/with-env.js .env.live ts-node scripts/create-super-admin.ts",
+    "ping:live": "curl -s --max-time 90 https://zero5aa0834a03bba18f7cc427f42a8ba49.onrender.com/health && echo"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
