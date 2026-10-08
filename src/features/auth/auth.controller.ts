@@ -3,6 +3,7 @@ import * as authService from './auth.service';
 import {
   signupSchema, loginSchema, refreshSchema, logoutSchema, resetPasswordSchema,
   forgotPasswordSchema, resetPasswordConfirmSchema,
+  sendLoginOtpSchema, verifyLoginOtpSchema,
 } from './auth.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -30,6 +31,39 @@ export const loginHandler = async (
   try {
     const input             = loginSchema.parse(req.body);
     const { user, tokens }  = await authService.login(input);
+    sendSuccess(res, { user, tokens });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/login/otp/send ─────────────────────────────────
+export const sendLoginOtpHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = sendLoginOtpSchema.parse(req.body);
+    const result = await authService.sendLoginOtp(input);
+    sendSuccess(res, {
+      message: 'OTP sent successfully.',
+      ...result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/login/otp/verify ───────────────────────────────
+export const verifyLoginOtpHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input             = verifyLoginOtpSchema.parse(req.body);
+    const { user, tokens }  = await authService.verifyLoginOtp(input);
     sendSuccess(res, { user, tokens });
   } catch (err) {
     next(err);

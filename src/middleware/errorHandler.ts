@@ -5,6 +5,7 @@ import { env }      from '../config/env';
 interface AppError extends Error {
   statusCode?: number;
   code?:       string;
+  details?:    Record<string, unknown>;
 }
 
 export const errorHandler = (
@@ -44,6 +45,7 @@ export const errorHandler = (
         ? 'Internal server error'
         : message,
       code,
+      ...(err.details ? { details: err.details } : {}),
     },
   });
 };

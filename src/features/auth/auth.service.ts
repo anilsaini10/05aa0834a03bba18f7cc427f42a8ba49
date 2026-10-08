@@ -1,8 +1,11 @@
-import { User } from '@prisma/client';
+import { User, Role } from '@prisma/client';
 import { prisma }              from '../../config/db';
 import { hashPassword, comparePassword } from '../../shared/utils/hash';
 import { generateOtp } from '../../shared/utils/otp';
 import { sendMail } from '../../config/mailer';
+import { sendSms } from '../../config/sms';
+import { toE164 } from '../../shared/utils/phone';
+import { env } from '../../config/env';
 import { changeOwnPassword } from '../../shared/services/account.service';
 import {
   signAccessToken,
@@ -13,6 +16,7 @@ import {
 } from '../../shared/utils/jwt';
 import {
   SignupInput, LoginInput, AuthTokens, UserPublic,
+  SendLoginOtpInput, VerifyLoginOtpInput,
 } from './auth.types';
 
 // ── Helper — strip password ───────────────────────────────────
@@ -109,12 +113,9 @@ export const signup = async (
   return issueSession(user, school.name);
 };
 
-// ── Login — school-scoped for TEACHER/PARENT, global for ADMIN/SUPER_ADMIN ─
-export const login = async (
-  input: LoginInput,
-): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
-
-  const { identifier, password, role, schoolId } = input;
+// ── TEACHER/PARENT logins are school-scoped and need a schoolId;
+//    ADMIN/SUPER_ADMIN are global. Returns whether the role is scoped. ─
+const assertSchoolScope = (role: Role, schoolId?: string): boolean => {
   const isSchoolScoped = role !== 'ADMIN' && role !== 'SUPER_ADMIN';
 
   if (isSchoolScoped && !schoolId) {
@@ -123,6 +124,17 @@ export const login = async (
     err.statusCode = 400;
     throw err;
   }
+
+  return isSchoolScoped;
+};
+
+// ── Login — school-scoped for TEACHER/PARENT, global for ADMIN/SUPER_ADMIN ─
+export const login = async (
+  input: LoginInput,
+): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
+
+  const { identifier, password, role, schoolId } = input;
+  const isSchoolScoped = assertSchoolScope(role, schoolId);
 
   const user = await prisma.user.findFirst({
     where: {
@@ -141,6 +153,190 @@ export const login = async (
   if (!valid) {
     throw invalidCredentials();
   }
+
+  return issueSession(user, user.school?.name ?? null);
+};
+
+// ════════════════════════════════════════════════════════════
+// Login with mobile number + OTP (passwordless). The OTP is delivered
+// via sendSms(), so switching from the console provider to a real SMS
+// gateway needs no change here.
+// ════════════════════════════════════════════════════════════
+
+const LOGIN_OTP_TTL_MS          = 5 * 60 * 1000;
+const LOGIN_OTP_RESEND_AFTER_MS = 60 * 1000;
+const LOGIN_OTP_MAX_PER_HOUR    = 5;
+const LOGIN_OTP_MAX_ATTEMPTS    = 5;
+
+// Dev-only: prints the OTP to the server terminal so it can be read
+// locally whatever SMS provider is configured. Never logs in production.
+const devOtpLog = (input: SendLoginOtpInput, otp: string): void => {
+  if (env.NODE_ENV === 'production') return;
+  const who = `${input.phone} (${input.role}${input.schoolId ? `, school ${input.schoolId}` : ''})`;
+  console.log(`\n🔐 [DEV] Login OTP for ${who}: ${otp}  (valid ${LOGIN_OTP_TTL_MS / 60000} min)\n`);
+};
+
+// ── Login-OTP errors — each has its own code so the app can show a
+//    specific message; `details` carries numbers the UI needs. ─────────
+const otpError = (
+  message:    string,
+  code:       string,
+  statusCode: number,
+  details?:   Record<string, unknown>,
+) => {
+  const err = new Error(message) as any;
+  err.code       = code;
+  err.statusCode = statusCode;
+  if (details) err.details = details;
+  return err;
+};
+
+const findOtpLoginUser = async ({ phone, role, schoolId }: SendLoginOtpInput) => {
+  const isSchoolScoped = assertSchoolScope(role, schoolId);
+
+  const user = await prisma.user.findFirst({
+    where: {
+      phone,
+      role,
+      ...(isSchoolScoped ? { schoolId } : {}),
+    },
+    include: { school: true },
+  });
+
+  if (!user) {
+    throw otpError(
+      'This mobile number is not registered. Please check the number or contact your school.',
+      'PHONE_NOT_REGISTERED', 404,
+    );
+  }
+  if (!user.isActive) {
+    throw otpError(
+      'Your account is inactive. Please contact your school admin.',
+      'ACCOUNT_INACTIVE', 403,
+    );
+  }
+
+  return user;
+};
+
+// ── Request a login OTP ─────────────────────────────────────────
+export const sendLoginOtp = async (
+  input: SendLoginOtpInput,
+): Promise<{ resendAfterSeconds: number; expiresInSeconds: number }> => {
+
+  const user   = await findOtpLoginUser(input);
+  const now    = Date.now();
+  const hourMs = 60 * 60 * 1000;
+
+  const recent = await prisma.loginOtp.findMany({
+    where:   { userId: user.id, createdAt: { gt: new Date(now - hourMs) } },
+    orderBy: { createdAt: 'desc' },
+    select:  { createdAt: true },
+  });
+
+  if (recent.length >= LOGIN_OTP_MAX_PER_HOUR) {
+    const oldest = recent[recent.length - 1].createdAt.getTime();
+    throw otpError(
+      'Too many OTP requests. Please try again later.',
+      'OTP_LIMIT_REACHED', 429,
+      { retryAfterSeconds: Math.ceil((oldest + hourMs - now) / 1000) },
+    );
+  }
+
+  const sinceLastMs = recent[0] ? now - recent[0].createdAt.getTime() : Infinity;
+  if (sinceLastMs < LOGIN_OTP_RESEND_AFTER_MS) {
+    const retryAfterSeconds = Math.ceil((LOGIN_OTP_RESEND_AFTER_MS - sinceLastMs) / 1000);
+    throw otpError(
+      `Please wait ${retryAfterSeconds} seconds before requesting a new OTP.`,
+      'OTP_RESEND_COOLDOWN', 429,
+      { retryAfterSeconds },
+    );
+  }
+
+  const otp      = generateOtp();
+  const codeHash = await hashPassword(otp);
+
+  const [, created] = await prisma.$transaction([
+    prisma.loginOtp.updateMany({ where: { userId: user.id, used: false }, data: { used: true } }),
+    prisma.loginOtp.create({
+      data: {
+        userId:    user.id,
+        codeHash,
+        expiresAt: new Date(now + LOGIN_OTP_TTL_MS),
+      },
+    }),
+  ]);
+
+  devOtpLog(input, otp);
+
+  try {
+    await sendSms(
+      toE164(user.phone!),
+      `${otp} is your Arise login OTP. It expires in ${LOGIN_OTP_TTL_MS / 60000} minutes. Do not share it with anyone.`,
+    );
+  } catch (err) {
+    console.error('sendLoginOtp: failed to send OTP SMS:', err);
+    // Undelivered OTP shouldn't count towards cooldown / hourly limit.
+    await prisma.loginOtp.delete({ where: { id: created.id } });
+    throw otpError(
+      'Could not send OTP right now. Please try again in a moment.',
+      'OTP_SEND_FAILED', 503,
+    );
+  }
+
+  return {
+    resendAfterSeconds: LOGIN_OTP_RESEND_AFTER_MS / 1000,
+    expiresInSeconds:   LOGIN_OTP_TTL_MS / 1000,
+  };
+};
+
+// ── Verify a login OTP and issue a session ──────────────────────
+export const verifyLoginOtp = async (
+  input: VerifyLoginOtpInput,
+): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
+
+  const user = await findOtpLoginUser(input);
+
+  const otpExpired = () => otpError(
+    'OTP has expired or is no longer valid. Please request a new OTP.',
+    'OTP_EXPIRED', 400,
+  );
+
+  // Only one OTP is ever active per user — sending a new one invalidates the rest.
+  const active = await prisma.loginOtp.findFirst({
+    where:   { userId: user.id, used: false, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!active) throw otpExpired();
+
+  if (!(await comparePassword(input.otp, active.codeHash))) {
+    const attempts     = active.attempts + 1;
+    const attemptsLeft = LOGIN_OTP_MAX_ATTEMPTS - attempts;
+
+    await prisma.loginOtp.update({
+      where: { id: active.id },
+      data:  { attempts, ...(attemptsLeft <= 0 ? { used: true } : {}) },
+    });
+
+    if (attemptsLeft <= 0) {
+      throw otpError(
+        'Too many incorrect attempts. Please request a new OTP.',
+        'OTP_ATTEMPTS_EXCEEDED', 429,
+      );
+    }
+    throw otpError(
+      `Incorrect OTP. ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left.`,
+      'INVALID_OTP', 400,
+      { attemptsLeft },
+    );
+  }
+
+  // Conditional update so two concurrent verifies can't both consume the same OTP.
+  const consumed = await prisma.loginOtp.updateMany({
+    where: { id: active.id, used: false },
+    data:  { used: true },
+  });
+  if (consumed.count !== 1) throw otpExpired();
 
   return issueSession(user, user.school?.name ?? null);
 };

@@ -2,6 +2,8 @@ import { Router } from 'express';
 import {
   signupHandler,
   loginHandler,
+  sendLoginOtpHandler,
+  verifyLoginOtpHandler,
   refreshHandler,
   logoutHandler,
   meHandler,
@@ -16,6 +18,8 @@ const router = Router();
 
 router.post('/signup',  signupHandler);
 router.post('/login',   loginHandler);
+router.post('/login/otp/send',   sendLoginOtpHandler);
+router.post('/login/otp/verify', verifyLoginOtpHandler);
 router.post('/refresh', refreshHandler);
 router.post('/logout',  logoutHandler);
 router.get('/me',       authGuard, meHandler);

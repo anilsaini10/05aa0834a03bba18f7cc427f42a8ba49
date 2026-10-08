@@ -3,11 +3,13 @@ import { env }        from './config/env';
 import { connectDB, disconnectDB } from './config/db';
 import { initFirebase } from './config/firebase';
 import { initMailer }   from './config/mailer';
+import { initSms }      from './config/sms';
 
 const startServer = async (): Promise<void> => {
   await connectDB();
   initFirebase();
   initMailer();
+  initSms();
 
   const server = app.listen(Number(env.PORT), () => {
     console.log('');

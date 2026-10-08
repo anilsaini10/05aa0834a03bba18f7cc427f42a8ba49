@@ -107,35 +107,36 @@ enum ScheduleType {
 
 // ── User ──────────────────────────────────────────────────────
 model User {
-  id            String         @id @default(uuid())
-  name          String
-  email         String         @unique
-  phone         String?        @unique
-  passwordHash  String
-  role          Role
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  phone        String?  @unique
+  passwordHash String
+  role         Role
   // Nullable ONLY for SUPER_ADMIN — enforced in app code + a DB CHECK
   // constraint (see migration), since a super admin isn't scoped to a school.
-  schoolId      String?
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  schoolId     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  school           School?        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  refreshTokens    RefreshToken[]
-  deviceTokens     DeviceToken[]
-  notifications    Notification[]
-  parentOfStudents      Student[]
-  teacherProfile        Teacher?
-  announcementsCreated  Announcement[]
-  eventsCreated         Event[]
-  examsCreated          Exam[]
-  attendanceMarked      AttendanceRecord[]
-  homeworkCreated       Homework[]
-  homeworkSubmissionsMarked HomeworkSubmission[]
-  classSchedulesCreated ClassSchedule[]
-  leaveRequestsApplied  LeaveRequest[]    @relation("LeaveAppliedBy")
-  leaveRequestsReviewed LeaveRequest[]    @relation("LeaveReviewedBy")
-  teacherLeaveRequestsReviewed TeacherLeaveRequest[] @relation("TeacherLeaveReviewedBy")
+  school                       School?                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  refreshTokens                RefreshToken[]
+  loginOtps                    LoginOtp[]
+  deviceTokens                 DeviceToken[]
+  notifications                Notification[]
+  parentOfStudents             Student[]
+  teacherProfile               Teacher?
+  announcementsCreated         Announcement[]
+  eventsCreated                Event[]
+  examsCreated                 Exam[]
+  attendanceMarked             AttendanceRecord[]
+  homeworkCreated              Homework[]
+  homeworkSubmissionsMarked    HomeworkSubmission[]
+  classSchedulesCreated        ClassSchedule[]
+  leaveRequestsApplied         LeaveRequest[]            @relation("LeaveAppliedBy")
+  leaveRequestsReviewed        LeaveRequest[]            @relation("LeaveReviewedBy")
+  teacherLeaveRequestsReviewed TeacherLeaveRequest[]     @relation("TeacherLeaveReviewedBy")
   teacherAttendanceMarked      TeacherAttendanceRecord[]
   passwordResetTokens          PasswordResetToken[]
 
@@ -151,11 +152,11 @@ model School {
   // creation if not supplied. Immutable once set (not in the update schema).
   code String? @unique
 
-  board      Board?
-  schoolType SchoolType?
-  medium     String?
+  board           Board?
+  schoolType      SchoolType?
+  medium          String?
   establishedYear Int?
-  logoUrl    String?
+  logoUrl         String?
 
   // ── Location ──────────────────────────────────────────────────
   // city/contactEmail are REQUIRED going forward (enforced in the create
@@ -166,7 +167,7 @@ model School {
   city         String?
   state        String?
   pincode      String?
-  country      String?  @default("India")
+  country      String? @default("India")
   latitude     Float?
   longitude    Float?
 
@@ -188,23 +189,23 @@ model School {
   classesTo                 String?
   academicSessionStartMonth Int?
 
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  users         User[]
-  classes       Class[]
-  subjects      Subject[]
-  students      Student[]
-  teachers      Teacher[]
-  announcements     Announcement[]
-  events            Event[]
-  exams             Exam[]
-  attendanceRecords AttendanceRecord[]
-  homework          Homework[]
-  classSchedules    ClassSchedule[]
-  leaveRequests     LeaveRequest[]
-  teacherLeaveRequests TeacherLeaveRequest[]
+  users                    User[]
+  classes                  Class[]
+  subjects                 Subject[]
+  students                 Student[]
+  teachers                 Teacher[]
+  announcements            Announcement[]
+  events                   Event[]
+  exams                    Exam[]
+  attendanceRecords        AttendanceRecord[]
+  homework                 Homework[]
+  classSchedules           ClassSchedule[]
+  leaveRequests            LeaveRequest[]
+  teacherLeaveRequests     TeacherLeaveRequest[]
   teacherAttendanceRecords TeacherAttendanceRecord[]
-  staff             Staff[]
+  staff                    Staff[]
 
   @@map("schools")
 }
@@ -278,8 +279,8 @@ model ExamClass {
   examId   String
   classId  String
   maxMarks Float
-  exam     Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
-  class    Class @relation(fields: [classId], references: [id])
+  exam     Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  class    Class  @relation(fields: [classId], references: [id])
 
   @@id([examId, classId])
   @@map("exam_classes")
@@ -383,17 +384,17 @@ model Homework {
 // "not yet checked" (surfaced as status: null in the API), not the same
 // as an explicit NOT_SUBMITTED.
 model HomeworkSubmission {
-  id         String                   @id @default(uuid())
-  homeworkId String
-  homework   Homework                 @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
-  studentId  String
-  student    Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  status     HomeworkSubmissionStatus
-  remarks    String?
-  markedBy   String
-  markedByUser User                   @relation(fields: [markedBy], references: [id])
-  createdAt  DateTime                 @default(now())
-  updatedAt  DateTime                 @updatedAt
+  id           String                   @id @default(uuid())
+  homeworkId   String
+  homework     Homework                 @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status       HomeworkSubmissionStatus
+  remarks      String?
+  markedBy     String
+  markedByUser User                     @relation(fields: [markedBy], references: [id])
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
 
   @@unique([homeworkId, studentId])
   @@index([homeworkId])
@@ -423,8 +424,8 @@ model ClassSchedule {
   teacher       Teacher?     @relation(fields: [teacherId], references: [id])
   roomNo        String?
   title         String?
-  startTime     String       // "HH:MM", 24-hour, no date component
-  endTime       String       // "HH:MM", 24-hour, no date component
+  startTime     String // "HH:MM", 24-hour, no date component
+  endTime       String // "HH:MM", 24-hour, no date component
   createdBy     String
   createdByUser User         @relation(fields: [createdBy], references: [id])
   createdAt     DateTime     @default(now())
@@ -439,13 +440,13 @@ model ClassSchedule {
 
 // ── RefreshToken ───────────────────────────────────────────────
 model RefreshToken {
-  id         String   @id @default(uuid())
-  userId     String
-  token      String   @unique
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
 }
@@ -466,6 +467,24 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+// ── LoginOtp — mobile number + OTP login ─────────────────────────
+// codeHash is a bcrypt hash of the 6-digit OTP, never the plaintext.
+// Rows are invalidated (used = true), not deleted, when a new OTP is
+// issued, so they also serve as the per-hour send counter.
+model LoginOtp {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("login_otps")
+}
+
 // ── DeviceToken ────────────────────────────────────────────────
 model DeviceToken {
   id        String    @id @default(uuid())
@@ -475,7 +494,7 @@ model DeviceToken {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("device_tokens")
 }
@@ -489,16 +508,16 @@ model DeviceToken {
 // introduce new notification types without a schema migration, as long
 // as they pass a `type` inside PushPayload.data (see notifications.service.ts).
 model Notification {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   body      String
-  type      String   @default("GENERAL")
-  data      Json     @default("{}")
-  isRead    Boolean  @default(false)
+  type      String    @default("GENERAL")
+  data      Json      @default("{}")
+  isRead    Boolean   @default(false)
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId, createdAt])
   @@index([userId, isRead])
@@ -507,13 +526,13 @@ model Notification {
 
 // ── Class ─────────────────────────────────────────────────────
 model Class {
-  id              String           @id @default(uuid())
-  name            String
-  numericLevel    Int
-  schoolId        String
-  school          School           @relation(fields: [schoolId], references: [id])
-  sections        Section[]
-  students        Student[]
+  id                String             @id @default(uuid())
+  name              String
+  numericLevel      Int
+  schoolId          String
+  school            School             @relation(fields: [schoolId], references: [id])
+  sections          Section[]
+  students          Student[]
   subjects          ClassSubject[]
   teacherSubjects   TeacherSubject[]
   examClasses       ExamClass[]
@@ -530,18 +549,18 @@ model Class {
 
 // ── Section ───────────────────────────────────────────────────
 model Section {
-  id             String    @id @default(uuid())
-  name           String
-  classId        String
-  class          Class     @relation(fields: [classId], references: [id])
-  capacity       Int
-  classTeacherId String?
-  classTeacher   Teacher?  @relation(fields: [classTeacherId], references: [id])
-  students       Student[]
+  id                String             @id @default(uuid())
+  name              String
+  classId           String
+  class             Class              @relation(fields: [classId], references: [id])
+  capacity          Int
+  classTeacherId    String?
+  classTeacher      Teacher?           @relation(fields: [classTeacherId], references: [id])
+  students          Student[]
   attendanceRecords AttendanceRecord[]
-  homework       Homework[]
-  classSchedules ClassSchedule[]
-  leaveRequests  LeaveRequest[]
+  homework          Homework[]
+  classSchedules    ClassSchedule[]
+  leaveRequests     LeaveRequest[]
 
   @@unique([classId, name])
   @@map("sections")
@@ -549,13 +568,13 @@ model Section {
 
 // ── Subject ───────────────────────────────────────────────────
 model Subject {
-  id       String           @id @default(uuid())
-  name     String
-  schoolId String
-  school   School           @relation(fields: [schoolId], references: [id])
-  teachers TeacherSubject[]
-  classes  ClassSubject[]
-  homework Homework[]
+  id             String           @id @default(uuid())
+  name           String
+  schoolId       String
+  school         School           @relation(fields: [schoolId], references: [id])
+  teachers       TeacherSubject[]
+  classes        ClassSubject[]
+  homework       Homework[]
   classSchedules ClassSchedule[]
 
   @@unique([schoolId, name])
@@ -576,32 +595,32 @@ model ClassSubject {
 
 // ── Student ───────────────────────────────────────────────────
 model Student {
-  id                   String   @id @default(uuid())
+  id                   String               @id @default(uuid())
   admissionNo          String
   name                 String
   gender               Gender
   dateOfBirth          DateTime
   classId              String
-  class                Class    @relation(fields: [classId], references: [id])
+  class                Class                @relation(fields: [classId], references: [id])
   sectionId            String
-  section              Section  @relation(fields: [sectionId], references: [id])
+  section              Section              @relation(fields: [sectionId], references: [id])
   rollNo               Int
   parentUserId         String
-  parentUser           User     @relation(fields: [parentUserId], references: [id])
+  parentUser           User                 @relation(fields: [parentUserId], references: [id])
   parentName           String
   parentPhone          String
   parentEmail          String
   bloodGroup           String?
   address              String?
-  status               String   @default("ACTIVE")
-  attendancePercentage Float    @default(100)
+  status               String               @default("ACTIVE")
+  attendancePercentage Float                @default(100)
   schoolId             String
-  school               School   @relation(fields: [schoolId], references: [id])
+  school               School               @relation(fields: [schoolId], references: [id])
   examResults          ExamResult[]
   attendanceRecords    AttendanceRecord[]
   leaveRequests        LeaveRequest[]
   homeworkSubmissions  HomeworkSubmission[]
-  createdAt            DateTime @default(now())
+  createdAt            DateTime             @default(now())
 
   @@index([schoolId])
   @@map("students")
@@ -609,24 +628,24 @@ model Student {
 
 // ── Teacher ───────────────────────────────────────────────────
 model Teacher {
-  id                String           @id @default(uuid())
+  id                String                    @id @default(uuid())
   employeeId        String
-  userId            String           @unique
-  user              User             @relation(fields: [userId], references: [id])
+  userId            String                    @unique
+  user              User                      @relation(fields: [userId], references: [id])
   gender            Gender
   joiningDate       DateTime
   salary            Float
-  qualification     String           @default("")
-  experienceYears   Int              @default(0)
-  experienceMonths  Int              @default(0)
+  qualification     String                    @default("")
+  experienceYears   Int                       @default(0)
+  experienceMonths  Int                       @default(0)
   // Subjects this teacher is generally qualified to teach — a plain name
   // list, not tied to any class. Actual class+subject scheduling
   // assignments still live in TeacherSubject (via assign-subject endpoint).
-  subjectsTaught    String[]         @default([])
-  status            String           @default("ACTIVE")
-  performanceScore  Float            @default(0)
+  subjectsTaught    String[]                  @default([])
+  status            String                    @default("ACTIVE")
+  performanceScore  Float                     @default(0)
   schoolId          String
-  school            School           @relation(fields: [schoolId], references: [id])
+  school            School                    @relation(fields: [schoolId], references: [id])
   subjects          TeacherSubject[]
   sectionsAsTeacher Section[]
   classSchedules    ClassSchedule[]
@@ -656,27 +675,27 @@ model TeacherSubject {
 // of the section or an Admin can approve/reject. Approval auto-marks
 // AttendanceRecord as LEAVE for every date in [fromDate, toDate].
 model LeaveRequest {
-  id             String       @id @default(uuid())
+  id             String      @id @default(uuid())
   schoolId       String
-  school         School       @relation(fields: [schoolId], references: [id])
+  school         School      @relation(fields: [schoolId], references: [id])
   studentId      String
-  student        Student      @relation(fields: [studentId], references: [id])
+  student        Student     @relation(fields: [studentId], references: [id])
   classId        String
-  class          Class        @relation(fields: [classId], references: [id])
+  class          Class       @relation(fields: [classId], references: [id])
   sectionId      String
-  section        Section      @relation(fields: [sectionId], references: [id])
-  fromDate       DateTime     @db.Date
-  toDate         DateTime     @db.Date
+  section        Section     @relation(fields: [sectionId], references: [id])
+  fromDate       DateTime    @db.Date
+  toDate         DateTime    @db.Date
   reason         String
-  status         LeaveStatus  @default(PENDING)
+  status         LeaveStatus @default(PENDING)
   appliedBy      String
-  appliedByUser  User         @relation("LeaveAppliedBy", fields: [appliedBy], references: [id])
+  appliedByUser  User        @relation("LeaveAppliedBy", fields: [appliedBy], references: [id])
   reviewedBy     String?
-  reviewedByUser User?        @relation("LeaveReviewedBy", fields: [reviewedBy], references: [id])
+  reviewedByUser User?       @relation("LeaveReviewedBy", fields: [reviewedBy], references: [id])
   reviewedAt     DateTime?
   reviewRemarks  String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([schoolId])
   @@index([studentId])
@@ -738,23 +757,23 @@ model TeacherAttendanceRecord {
 // a plain record managed by Admin, no login/User account (unlike
 // Teacher). designation is free text since titles vary by school.
 model Staff {
-  id                String   @id @default(uuid())
-  employeeId        String
-  name              String
-  email             String?
-  phone             String
-  gender            Gender
-  designation       String
-  salary            Float
-  qualification     String   @default("")
-  experienceYears   Int      @default(0)
-  experienceMonths  Int      @default(0)
-  joiningDate       DateTime
-  status            String   @default("ACTIVE")
-  schoolId          String
-  school            School   @relation(fields: [schoolId], references: [id])
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(uuid())
+  employeeId       String
+  name             String
+  email            String?
+  phone            String
+  gender           Gender
+  designation      String
+  salary           Float
+  qualification    String   @default("")
+  experienceYears  Int      @default(0)
+  experienceMonths Int      @default(0)
+  joiningDate      DateTime
+  status           String   @default("ACTIVE")
+  schoolId         String
+  school           School   @relation(fields: [schoolId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([schoolId])
   @@map("staff")

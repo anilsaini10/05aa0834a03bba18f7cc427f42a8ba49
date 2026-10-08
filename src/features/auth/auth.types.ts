@@ -15,6 +15,16 @@ export interface LoginInput {
   schoolId?:  string;
 }
 
+export interface SendLoginOtpInput {
+  phone:     string;
+  role:      Role;
+  schoolId?: string;
+}
+
+export interface VerifyLoginOtpInput extends SendLoginOtpInput {
+  otp: string;
+}
+
 export interface RefreshInput {
   refreshToken: string;
 }

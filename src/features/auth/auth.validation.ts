@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Role } from '@prisma/client';
+import { normalizePhone } from '../../shared/utils/phone';
 
 export const signupSchema = z.object({
   schoolName: z.string().min(2, 'School name must be at least 2 characters').max(150),
@@ -39,6 +40,30 @@ export const resetPasswordConfirmSchema = z.object({
   newPassword: z.string().min(6, 'New password must be at least 6 characters').max(100),
 });
 
+// Accepts any common way of typing the number (+91…, 0…, spaces, dashes)
+// and hands the service the normalized national number.
+const phoneField = z.string().transform((value, ctx) => {
+  const phone = normalizePhone(value);
+  if (!phone) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid 10-digit mobile number' });
+    return z.NEVER;
+  }
+  return phone;
+});
+
+export const sendLoginOtpSchema = z.object({
+  phone:    phoneField,
+  role:     z.nativeEnum(Role),
+  schoolId: z.string().uuid('Invalid school id').optional(),
+});
+
+export const verifyLoginOtpSchema = z.object({
+  phone:    phoneField,
+  otp:      z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
+  role:     z.nativeEnum(Role),
+  schoolId: z.string().uuid('Invalid school id').optional(),
+});
+
 export type SignupSchema               = z.infer<typeof signupSchema>;
 export type LoginSchema                = z.infer<typeof loginSchema>;
 export type RefreshSchema              = z.infer<typeof refreshSchema>;
@@ -46,3 +71,5 @@ export type LogoutSchema               = z.infer<typeof logoutSchema>;
 export type ResetPasswordSchema        = z.infer<typeof resetPasswordSchema>;
 export type ForgotPasswordSchema       = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordConfirmSchema = z.infer<typeof resetPasswordConfirmSchema>;
+export type SendLoginOtpSchema         = z.infer<typeof sendLoginOtpSchema>;
+export type VerifyLoginOtpSchema       = z.infer<typeof verifyLoginOtpSchema>;

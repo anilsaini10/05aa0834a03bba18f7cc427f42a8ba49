@@ -16,6 +16,7 @@ const envSchema = z.object({
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
   GMAIL_USER:          z.string().optional(),
   GMAIL_APP_PASSWORD:  z.string().optional(),
+  SMS_PROVIDER:        z.enum(['console']).default('console'),
 });
 
 const parsed = envSchema.safeParse(process.env);

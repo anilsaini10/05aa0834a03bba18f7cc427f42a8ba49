@@ -98,9 +98,8 @@ export const getProfile = async (userId: string) => {
 };
 
 // ── GET /students/dashboard ────────────────────────────────────
-// Per-child summary for the parent home screen. pendingHomeworkCount
-// counts homework for the child's class/section not yet due (there's
-// no per-student submission tracking, so "pending" = dueDate >= today).
+// Per-child summary for the parent home screen. See activeHomeworkCount's
+// own comment below for exactly what it does and doesn't mean.
 // upcomingExamsCount counts exams scheduled for the child's class that
 // haven't started yet (or have no startDate set).
 export const getMyDashboard = async (userId: string, query: GetMyDashboardQuerySchema) => {
@@ -109,12 +108,25 @@ export const getMyDashboard = async (userId: string, query: GetMyDashboardQueryS
   const school  = await prisma.school.findUniqueOrThrow({ where: { id: parent.schoolId! } });
   const today   = todayDateOnly();
 
-  const [attendanceRecord, pendingHomeworkCount, upcomingExamsCount] = await Promise.all([
+  // activeHomeworkCount: homework for this class/section that isn't
+  // overdue yet (dueDate >= today) and hasn't been soft-deleted by the
+  // teacher. NOT a "not yet submitted" count — it doesn't look at
+  // HomeworkSubmission at all, just whether the homework itself is still
+  // within its due window. Named "active" (not "pending") specifically to
+  // avoid implying completion status, and to avoid confusion with
+  // Homework.status's own "IN_PROGRESS" value, which is a different,
+  // teacher-set field this count doesn't check either.
+  const [attendanceRecord, activeHomeworkCount, upcomingExamsCount] = await Promise.all([
     prisma.attendanceRecord.findUnique({
       where: { studentId_date: { studentId: student.id, date: today } },
     }),
     prisma.homework.count({
-      where: { classId: student.classId, sectionId: student.sectionId, dueDate: { gte: today } },
+      where: {
+        classId:   student.classId,
+        sectionId: student.sectionId,
+        dueDate:   { gte: today },
+        isActive:  true,
+      },
     }),
     prisma.examClass.count({
       where: {
@@ -135,7 +147,7 @@ export const getMyDashboard = async (userId: string, query: GetMyDashboardQueryS
       date:   toDateString(today),
       status: attendanceRecord?.status ?? null,
     },
-    pendingHomeworkCount,
+    activeHomeworkCount,
     upcomingExamsCount,
   };
 };
