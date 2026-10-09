@@ -197,6 +197,35 @@ const renumberSectionDay = async (
   );
 };
 
+// ── A teacher can be scheduled for a subject if it's either
+//    • assigned to them for any class (TeacherSubject), or
+//    • listed in their profile's subjectsTaught (plain names, set when the
+//      teacher is created/edited — matched case-insensitively by name).
+const normalizeSubjectName = (name: string) => name.trim().toLowerCase();
+
+const assertTeacherTeachesSubject = async (
+  schoolId:  string,
+  teacherId: string,
+  subjectId: string,
+): Promise<void> => {
+
+  const [teacher, subject] = await Promise.all([
+    prisma.teacher.findFirst({ where: { id: teacherId, schoolId }, select: { subjectsTaught: true } }),
+    prisma.subject.findFirst({ where: { id: subjectId, schoolId }, select: { name: true } }),
+  ]);
+  if (!teacher) throw notFound('Teacher not found', 'TEACHER_NOT_FOUND');
+  if (!subject) throw notFound('Subject not found', 'SUBJECT_NOT_FOUND');
+
+  const inProfile = teacher.subjectsTaught
+    .some(name => normalizeSubjectName(name) === normalizeSubjectName(subject.name));
+  if (inProfile) return;
+
+  const assigned = await prisma.teacherSubject.findFirst({ where: { teacherId, subjectId } });
+  if (!assigned) {
+    throw forbidden('This teacher does not teach this subject', 'SUBJECT_NOT_ASSIGNED');
+  }
+};
+
 // ── Create a schedule entry (class period or break) ─────────────────
 export const createSchedule = async (
   schoolId: string,
@@ -213,19 +242,14 @@ export const createSchedule = async (
   }
 
   if (input.type === 'CLASS_PERIOD') {
-    // Subject match only — a teacher assigned to a subject in ANY class can be
-    // scheduled for that subject in ANY other class too, as long as the usual
-    // time/teacher/room availability checks below still pass. This is why we
-    // also upsert a TeacherSubject row for THIS class below once scheduled —
-    // otherwise the teacher's own "my classes"/"my students" views (which
-    // are keyed strictly off TeacherSubject.classId) would never pick up a
-    // class they only ever got into via a schedule entry.
-    const teaches = await prisma.teacherSubject.findFirst({
-      where: { teacherId: input.teacherId!, subjectId: input.subjectId! },
-    });
-    if (!teaches) {
-      throw forbidden('This teacher does not teach this subject', 'SUBJECT_NOT_ASSIGNED');
-    }
+    // Subject match only — a teacher who teaches a subject (in ANY class, or
+    // per their profile) can be scheduled for it in ANY class, as long as the
+    // usual time/teacher/room availability checks below still pass. This is
+    // why we also upsert a TeacherSubject row for THIS class below once
+    // scheduled — otherwise the teacher's own "my classes"/"my students"
+    // views (which are keyed strictly off TeacherSubject.classId) would never
+    // pick up a class they only ever got into via a schedule entry.
+    await assertTeacherTeachesSubject(schoolId, input.teacherId!, input.subjectId!);
   }
 
   await runConflictChecks({
@@ -338,12 +362,7 @@ export const updateSchedule = async (
 
   if (existing.type === 'CLASS_PERIOD' && (input.subjectId || input.teacherId)) {
     // Subject match only — see the same note in createSchedule above.
-    const teaches = await prisma.teacherSubject.findFirst({
-      where: { teacherId: teacherId!, subjectId: subjectId! },
-    });
-    if (!teaches) {
-      throw forbidden('This teacher does not teach this subject', 'SUBJECT_NOT_ASSIGNED');
-    }
+    await assertTeacherTeachesSubject(schoolId, teacherId!, subjectId!);
   }
 
   const day = input.day ?? existing.day;
