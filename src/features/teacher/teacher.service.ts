@@ -21,7 +21,16 @@ import {
   ReviewLeaveRequestSchema,
   ApplyMyLeaveSchema,
   ListMyLeaveQuerySchema,
+  ListMyExamPapersQuerySchema,
+  ListPaperStudentsQuerySchema,
+  SaveExamMarksSchema,
 } from './teacher.validation';
+import {
+  PAPER_INCLUDE,
+  toPaperResponse,
+  listPaperStudents,
+  saveExamMarks,
+} from '../../shared/services/examPaper.service';
 
 // Attendance is tracked per calendar day; normalize to date-only (midnight UTC)
 // to match the DB's @db.Date column and avoid time-of-day mismatches.
@@ -1078,4 +1087,182 @@ export const cancelMyLeave = async (userId: string, leaveId: string): Promise<vo
   }
 
   await prisma.teacherLeaveRequest.delete({ where: { id: leaveId } });
+};
+
+// ════════════════════════════════════════════════════════════
+// Exams — a paper (class + subject) is graded section by section, by the
+// teacher who teaches that subject in that section:
+//   • the section has timetable periods for the subject (ClassSchedule)
+//     → only the teacher(s) of those periods;
+//   • no periods for it yet → teachers assigned the subject for the class
+//     (TeacherSubject) — a fallback so schools without a timetable can
+//     still grade.
+// A teacher also sees papers they invigilate (view-only).
+// ════════════════════════════════════════════════════════════
+
+type TeacherWithRefs = Awaited<ReturnType<typeof getTeacherByUserId>>;
+type ClassSubjectPair = { classId: string; subjectId: string };
+
+const pairKey = (p: ClassSubjectPair) => `${p.classId}:${p.subjectId}`;
+
+// Sections this teacher may grade, for many class+subject pairs at once.
+const getGradableSections = async (teacher: TeacherWithRefs, pairs: ClassSubjectPair[]) => {
+  const gradable = new Map<string, { id: string; name: string }[]>();
+  if (pairs.length === 0) return gradable;
+
+  const classIds   = [...new Set(pairs.map(p => p.classId))];
+  const subjectIds = [...new Set(pairs.map(p => p.subjectId))];
+
+  const [sections, periods] = await Promise.all([
+    prisma.section.findMany({
+      where:   { classId: { in: classIds } },
+      select:  { id: true, name: true, classId: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.classSchedule.findMany({
+      where:  { classId: { in: classIds }, subjectId: { in: subjectIds }, type: 'CLASS_PERIOD', teacherId: { not: null } },
+      select: { sectionId: true, subjectId: true, teacherId: true },
+    }),
+  ]);
+
+  for (const pair of pairs) {
+    const assignedForClass = teacher.subjects.some(
+      ts => ts.classId === pair.classId && ts.subjectId === pair.subjectId,
+    );
+    const mine = sections
+      .filter(sec => sec.classId === pair.classId)
+      .filter(sec => {
+        const sectionTeachers = new Set(
+          periods.filter(p => p.sectionId === sec.id && p.subjectId === pair.subjectId).map(p => p.teacherId),
+        );
+        return sectionTeachers.size > 0 ? sectionTeachers.has(teacher.id) : assignedForClass;
+      });
+    gradable.set(pairKey(pair), mine.map(sec => ({ id: sec.id, name: sec.name })));
+  }
+
+  return gradable;
+};
+
+// ── GET /teacher/exams — grouped by exam, papers in date/time order ─
+export const listMyExamPapers = async (userId: string, query: ListMyExamPapersQuerySchema) => {
+  const teacher = await getTeacherByUserId(userId);
+
+  // Every class+subject this teacher is linked to, via assignment or timetable.
+  const myPeriods = await prisma.classSchedule.findMany({
+    where:    { teacherId: teacher.id, type: 'CLASS_PERIOD', subjectId: { not: null } },
+    select:   { classId: true, subjectId: true },
+    distinct: ['classId', 'subjectId'],
+  });
+  const linkedPairs = new Map<string, ClassSubjectPair>();
+  for (const p of [...teacher.subjects, ...myPeriods] as ClassSubjectPair[]) {
+    linkedPairs.set(pairKey(p), { classId: p.classId, subjectId: p.subjectId });
+  }
+
+  const candidates = await prisma.examSchedule.findMany({
+    where: {
+      schoolId: teacher.schoolId,
+      ...(query.examId ? { examId: query.examId } : {}),
+      OR: [...linkedPairs.values(), { invigilatorId: teacher.id }],
+    },
+    include: PAPER_INCLUDE,
+    orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+  });
+
+  const gradable = await getGradableSections(teacher, candidates);
+  const papers   = candidates.filter(
+    p => (gradable.get(pairKey(p))?.length ?? 0) > 0 || p.invigilatorId === teacher.id,
+  );
+
+  const [sectionCounts, marked] = await Promise.all([
+    prisma.student.groupBy({
+      by:     ['classId', 'sectionId'],
+      where:  { classId: { in: [...new Set(papers.map(p => p.classId))] }, status: RECORD_STATUS.ACTIVE },
+      _count: { _all: true },
+    }),
+    prisma.examMark.findMany({
+      where:  { examScheduleId: { in: papers.map(p => p.id) }, status: { not: 'PENDING' } },
+      select: { examScheduleId: true, student: { select: { sectionId: true, classId: true } } },
+    }),
+  ]);
+  const studentsInSection = new Map(sectionCounts.map(c => [c.sectionId, c._count._all]));
+  const studentsInClass   = (classId: string) =>
+    sectionCounts.filter(c => c.classId === classId).reduce((sum, c) => sum + c._count._all, 0);
+
+  const exams = new Map<string, {
+    examId: string; title: string; startDate: string | null; endDate: string | null; papers: any[];
+  }>();
+  for (const p of papers) {
+    if (!exams.has(p.examId)) {
+      exams.set(p.examId, {
+        examId:    p.examId,
+        title:     p.exam.title,
+        startDate: p.exam.startDate ? toDateString(p.exam.startDate) : null,
+        endDate:   p.exam.endDate   ? toDateString(p.exam.endDate)   : null,
+        papers:    [],
+      });
+    }
+
+    const mySections    = gradable.get(pairKey(p)) ?? [];
+    const canEnterMarks = mySections.length > 0;
+    // Counts cover the teacher's own sections; an invigilator-only paper
+    // counts the whole class.
+    const inScope = (sectionId: string) => !canEnterMarks || mySections.some(s => s.id === sectionId);
+
+    exams.get(p.examId)!.papers.push({
+      ...toPaperResponse(p),
+      canEnterMarks,
+      isInvigilator: p.invigilatorId === teacher.id,
+      mySections,
+      studentCount: canEnterMarks
+        ? mySections.reduce((sum, s) => sum + (studentsInSection.get(s.id) ?? 0), 0)
+        : studentsInClass(p.classId),
+      markedCount: marked.filter(
+        m => m.examScheduleId === p.id && m.student.classId === p.classId && inScope(m.student.sectionId),
+      ).length,
+    });
+  }
+
+  return [...exams.values()];
+};
+
+// Returns the paper plus the sections this teacher may see/grade.
+// allowedSectionIds is undefined only for an invigilator-only view (whole
+// class, read-only).
+const requireMyExamPaper = async (userId: string, scheduleId: string, forMarks: boolean) => {
+  const teacher = await getTeacherByUserId(userId);
+
+  const paper = await prisma.examSchedule.findFirst({
+    where:   { id: scheduleId, schoolId: teacher.schoolId },
+    include: PAPER_INCLUDE,
+  });
+  if (!paper) throw notFound('Exam paper not found', 'EXAM_SCHEDULE_NOT_FOUND');
+
+  const mySections = (await getGradableSections(teacher, [paper])).get(pairKey(paper)) ?? [];
+  if (mySections.length > 0) {
+    return { paper, allowedSectionIds: mySections.map(s => s.id) };
+  }
+  if (!forMarks && paper.invigilatorId === teacher.id) {
+    return { paper, allowedSectionIds: undefined };
+  }
+
+  throw forbidden(
+    `You do not teach ${paper.subject.name} in ${paper.class.name}`,
+    'SUBJECT_NOT_ASSIGNED',
+  );
+};
+
+// ── GET /teacher/exams/schedule/:scheduleId/students ────────────
+export const getExamPaperStudents = async (
+  userId: string, scheduleId: string, query: ListPaperStudentsQuerySchema,
+) => {
+  const { paper, allowedSectionIds } = await requireMyExamPaper(userId, scheduleId, false);
+  return listPaperStudents(paper, query, allowedSectionIds);
+};
+
+// ── PUT /teacher/exams/schedule/:scheduleId/marks ───────────────
+export const saveExamPaperMarks = async (
+  userId: string, scheduleId: string, input: SaveExamMarksSchema,
+) => {
+  const { paper, allowedSectionIds } = await requireMyExamPaper(userId, scheduleId, true);
+  return saveExamMarks(paper, userId, input, allowedSectionIds);
 };

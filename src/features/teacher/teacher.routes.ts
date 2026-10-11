@@ -27,6 +27,9 @@ import {
   applyMyLeaveHandler,
   listMyLeaveHandler,
   cancelMyLeaveHandler,
+  listMyExamsHandler,
+  getExamPaperStudentsHandler,
+  saveExamPaperMarksHandler,
 } from './teacher.controller';
 import { authGuard } from '../../middleware/authGuard';
 import { roleGuard } from '../../middleware/roleGuard';
@@ -66,5 +69,9 @@ router.patch('/leave/:leaveId',  authGuard, roleGuard('TEACHER'), reviewLeaveReq
 router.post('/my-leave',            authGuard, roleGuard('TEACHER'), applyMyLeaveHandler);
 router.get('/my-leave',             authGuard, roleGuard('TEACHER'), listMyLeaveHandler);
 router.delete('/my-leave/:leaveId', authGuard, roleGuard('TEACHER'), cancelMyLeaveHandler);
+
+router.get('/exams',                                authGuard, roleGuard('TEACHER'), listMyExamsHandler);
+router.get('/exams/schedule/:scheduleId/students',  authGuard, roleGuard('TEACHER'), getExamPaperStudentsHandler);
+router.put('/exams/schedule/:scheduleId/marks',     authGuard, roleGuard('TEACHER'), saveExamPaperMarksHandler);
 
 export default router;

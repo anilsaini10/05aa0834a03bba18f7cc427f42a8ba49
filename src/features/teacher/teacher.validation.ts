@@ -163,6 +163,16 @@ export const listMyLeaveQuerySchema = z.object({
   status: z.nativeEnum(LeaveStatus).optional(),
 });
 
+// ── Exams (papers this teacher grades or invigilates) ──────────
+export const listMyExamPapersQuerySchema = z.object({
+  examId: z.string().uuid('Invalid exam id').optional(),
+});
+
+// Paper students listing + marks body are the same shapes the admin
+// endpoints use — re-exported so teacher code imports from one place.
+export { listPaperStudentsQuerySchema, saveExamMarksSchema } from '../admin/exams/exams.validation';
+export type { ListPaperStudentsQuerySchema, SaveExamMarksSchema } from '../admin/exams/exams.validation';
+
 export type UpdateProfileSchema                  = z.infer<typeof updateProfileSchema>;
 export type ResetPasswordSchema                  = z.infer<typeof resetPasswordSchema>;
 export type ListMyStudentsQuerySchema             = z.infer<typeof listMyStudentsQuerySchema>;
@@ -181,3 +191,4 @@ export type ListLeaveRequestsQuerySchema           = z.infer<typeof listLeaveReq
 export type ReviewLeaveRequestSchema               = z.infer<typeof reviewLeaveRequestSchema>;
 export type ApplyMyLeaveSchema                     = z.infer<typeof applyMyLeaveSchema>;
 export type ListMyLeaveQuerySchema                 = z.infer<typeof listMyLeaveQuerySchema>;
+export type ListMyExamPapersQuerySchema          = z.infer<typeof listMyExamPapersQuerySchema>;

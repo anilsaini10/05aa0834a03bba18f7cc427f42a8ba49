@@ -19,6 +19,9 @@ import {
   applyMyLeaveSchema,
   listMyLeaveQuerySchema,
   listMyAttendanceRecordsQuerySchema,
+  listMyExamPapersQuerySchema,
+  listPaperStudentsQuerySchema,
+  saveExamMarksSchema,
 } from './teacher.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -417,6 +420,51 @@ export const cancelMyLeaveHandler = async (
   try {
     await teacherService.cancelMyLeave((req as any).user.sub, req.params.leaveId);
     sendSuccess(res, { message: 'Leave request cancelled successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/exams ───────────────────────────────────────────────
+export const listMyExamsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listMyExamPapersQuerySchema.parse(req.query);
+    const result = await teacherService.listMyExamPapers((req as any).user.sub, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/exams/schedule/:scheduleId/students ─────────────────
+export const getExamPaperStudentsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listPaperStudentsQuerySchema.parse(req.query);
+    const result = await teacherService.getExamPaperStudents((req as any).user.sub, req.params.scheduleId, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PUT /teacher/exams/schedule/:scheduleId/marks ────────────────────
+export const saveExamPaperMarksHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = saveExamMarksSchema.parse(req.body);
+    const result = await teacherService.saveExamPaperMarks((req as any).user.sub, req.params.scheduleId, input);
+    sendSuccess(res, result);
   } catch (err) {
     next(err);
   }

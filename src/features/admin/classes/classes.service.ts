@@ -221,6 +221,7 @@ export const deleteClass = async (schoolId: string, classId: string): Promise<vo
 
   await prisma.$transaction([
     prisma.teacherSubject.deleteMany({ where: { classId } }),
+    prisma.examSchedule.deleteMany({ where: { classId } }),
     prisma.examClass.deleteMany({ where: { classId } }),
     prisma.classSubject.deleteMany({ where: { classId } }),
     prisma.section.deleteMany({ where: { classId } }),
