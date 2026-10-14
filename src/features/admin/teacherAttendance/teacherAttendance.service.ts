@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import {
+  TEACHER_ATTENDANCE_RECORD_INCLUDE,
+  toTeacherAttendanceResponse,
+} from '../../../shared/utils/teacherAttendance';
+import {
   MarkTeacherAttendanceSchema,
   ListTeacherAttendanceQuerySchema,
   UpdateTeacherAttendanceSchema,
@@ -19,25 +23,22 @@ const notFound = (message: string, code: string) => {
 };
 
 const TEACHER_ATTENDANCE_INCLUDE = {
-  teacher:      { include: { user: true } },
-  markedByUser: true,
+  ...TEACHER_ATTENDANCE_RECORD_INCLUDE,
+  teacher: { include: { user: true } },
 };
 
 const toRecordResponse = (r: any) => ({
-  id:          r.id,
   teacherId:   r.teacherId,
   teacherName: r.teacher.user.name,
   employeeId:  r.teacher.employeeId,
-  date:        toDateString(r.date),
-  status:      r.status,
-  markedBy:    { id: r.markedByUser.id, name: r.markedByUser.name },
-  createdAt:   r.createdAt,
-  updatedAt:   r.updatedAt,
+  ...toTeacherAttendanceResponse(r),
 });
 
 // ── POST /admin/teacher-attendance — bulk mark/update (upsert) for a date ─
 // One call handles both "mark today's attendance" and "correct it" —
-// re-submitting the same teacher+date just overwrites the status.
+// re-submitting the same teacher+date just overwrites the ADMIN status.
+// The teacher's own check-in (teacherStatus) is never touched; the admin's
+// status becomes the final status.
 export const markTeacherAttendance = async (
   schoolId: string,
   userId: string,
@@ -50,13 +51,17 @@ export const markTeacherAttendance = async (
   }
 
   const date = toDateOnly(input.date);
+  const now  = new Date();
 
   await prisma.$transaction(
     input.records.map(r =>
       prisma.teacherAttendanceRecord.upsert({
         where:  { teacherId_date: { teacherId: r.teacherId, date } },
-        update: { status: r.status, markedBy: userId },
-        create: { teacherId: r.teacherId, date, status: r.status, markedBy: userId, schoolId },
+        update: { adminStatus: r.status, adminMarkedBy: userId, adminMarkedAt: now, status: r.status },
+        create: {
+          schoolId, teacherId: r.teacherId, date,
+          adminStatus: r.status, adminMarkedBy: userId, adminMarkedAt: now, status: r.status,
+        },
       }),
     ),
   );
@@ -66,7 +71,7 @@ export const markTeacherAttendance = async (
 
 // ── GET /admin/teacher-attendance — paginated register with filters ────────
 export const listTeacherAttendance = async (schoolId: string, query: ListTeacherAttendanceQuerySchema) => {
-  const { page, pageSize, date, from, to, status, teacherId } = query;
+  const { page, pageSize, date, from, to, status, teacherStatus, adminStatus, teacherId } = query;
 
   const dateFilter = date
     ? toDateOnly(date)
@@ -81,6 +86,8 @@ export const listTeacherAttendance = async (schoolId: string, query: ListTeacher
     schoolId,
     ...(teacherId ? { teacherId } : {}),
     ...(status ? { status } : {}),
+    ...(teacherStatus ? { teacherStatus } : {}),
+    ...(adminStatus ? { adminStatus } : {}),
     ...(dateFilter ? { date: dateFilter } : {}),
   };
 
@@ -116,7 +123,7 @@ export const updateTeacherAttendance = async (
 
   const updated = await prisma.teacherAttendanceRecord.update({
     where:   { id: recordId },
-    data:    { status: input.status, markedBy: userId },
+    data:    { adminStatus: input.status, adminMarkedBy: userId, adminMarkedAt: new Date(), status: input.status },
     include: TEACHER_ATTENDANCE_INCLUDE,
   });
 

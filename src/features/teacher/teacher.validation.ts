@@ -173,6 +173,17 @@ export const listMyExamPapersQuerySchema = z.object({
 export { listPaperStudentsQuerySchema, saveExamMarksSchema } from '../admin/exams/exams.validation';
 export type { ListPaperStudentsQuerySchema, SaveExamMarksSchema } from '../admin/exams/exams.validation';
 
+// ── Self check-in / check-out — device location is optional, but
+//    latitude and longitude must come together. ─────────────────
+export const checkInSchema = z.object({
+  latitude:  z.coerce.number().min(-90,  'latitude must be between -90 and 90').max(90,  'latitude must be between -90 and 90').optional(),
+  longitude: z.coerce.number().min(-180, 'longitude must be between -180 and 180').max(180, 'longitude must be between -180 and 180').optional(),
+}).refine(data => (data.latitude === undefined) === (data.longitude === undefined), {
+  message: 'latitude and longitude must be sent together', path: ['latitude'],
+});
+
+export const checkOutSchema = checkInSchema;
+
 export type UpdateProfileSchema                  = z.infer<typeof updateProfileSchema>;
 export type ResetPasswordSchema                  = z.infer<typeof resetPasswordSchema>;
 export type ListMyStudentsQuerySchema             = z.infer<typeof listMyStudentsQuerySchema>;
@@ -192,3 +203,5 @@ export type ReviewLeaveRequestSchema               = z.infer<typeof reviewLeaveR
 export type ApplyMyLeaveSchema                     = z.infer<typeof applyMyLeaveSchema>;
 export type ListMyLeaveQuerySchema                 = z.infer<typeof listMyLeaveQuerySchema>;
 export type ListMyExamPapersQuerySchema          = z.infer<typeof listMyExamPapersQuerySchema>;
+export type CheckInSchema                       = z.infer<typeof checkInSchema>;
+export type CheckOutSchema                      = z.infer<typeof checkOutSchema>;

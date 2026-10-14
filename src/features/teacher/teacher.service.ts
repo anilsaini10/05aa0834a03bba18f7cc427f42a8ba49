@@ -1,7 +1,7 @@
 import { Prisma, DayOfWeek } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { changeOwnPassword } from '../../shared/services/account.service';
-import { RECORD_STATUS } from '../../constants';
+import { RECORD_STATUS, SCHOOL_TIMEZONE } from '../../constants';
 import { computeHomeworkStatus } from '../../shared/utils/homeworkStatus';
 import {
   UpdateProfileSchema,
@@ -24,6 +24,8 @@ import {
   ListMyExamPapersQuerySchema,
   ListPaperStudentsQuerySchema,
   SaveExamMarksSchema,
+  CheckInSchema,
+  CheckOutSchema,
 } from './teacher.validation';
 import {
   PAPER_INCLUDE,
@@ -31,6 +33,10 @@ import {
   listPaperStudents,
   saveExamMarks,
 } from '../../shared/services/examPaper.service';
+import {
+  TEACHER_ATTENDANCE_RECORD_INCLUDE,
+  toTeacherAttendanceResponse,
+} from '../../shared/utils/teacherAttendance';
 
 // Attendance is tracked per calendar day; normalize to date-only (midnight UTC)
 // to match the DB's @db.Date column and avoid time-of-day mismatches.
@@ -893,7 +899,7 @@ export const listMyAttendanceRecords = async (userId: string, query: ListMyAtten
   const [items, total] = await Promise.all([
     prisma.teacherAttendanceRecord.findMany({
       where,
-      include: { markedByUser: true },
+      include: TEACHER_ATTENDANCE_RECORD_INCLUDE,
       orderBy: { date: 'desc' },
       skip:    (page - 1) * pageSize,
       take:    pageSize,
@@ -902,14 +908,7 @@ export const listMyAttendanceRecords = async (userId: string, query: ListMyAtten
   ]);
 
   return {
-    items: items.map(r => ({
-      id:        r.id,
-      date:      toDateString(r.date),
-      status:    r.status,
-      markedBy:  { id: r.markedByUser.id, name: r.markedByUser.name },
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    })),
+    items: items.map(toTeacherAttendanceResponse),
     page,
     pageSize,
     total,
@@ -1265,4 +1264,192 @@ export const saveExamPaperMarks = async (
 ) => {
   const { paper, allowedSectionIds } = await requireMyExamPaper(userId, scheduleId, true);
   return saveExamMarks(paper, userId, input, allowedSectionIds);
+};
+
+// ════════════════════════════════════════════════════════════
+// Self check-in — a teacher marks their OWN status (teacherStatus =
+// PRESENT) for today, the school's local day (not the server's UTC day).
+// It's stored separately from the admin's marking (adminStatus), so
+// neither overwrites the other; the final status is adminStatus when the
+// admin has marked the day, otherwise teacherStatus. One check-in per day;
+// blocked on approved leave or a day the admin marked LEAVE/HOLIDAY.
+// ════════════════════════════════════════════════════════════
+
+const schoolTodayString = (): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCHOOL_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+
+const formatSchoolTime = (d: Date): string =>
+  d.toLocaleTimeString('en-IN', { timeZone: SCHOOL_TIMEZONE, hour: '2-digit', minute: '2-digit' });
+
+const loadTodayCheckIn = async (userId: string) => {
+  const teacher = await getTeacherByUserId(userId);
+  const dateStr = schoolTodayString();
+  const date    = new Date(`${dateStr}T00:00:00.000Z`);
+
+  const [record, leave] = await Promise.all([
+    prisma.teacherAttendanceRecord.findUnique({
+      where:   { teacherId_date: { teacherId: teacher.id, date } },
+      include: TEACHER_ATTENDANCE_RECORD_INCLUDE,
+    }),
+    prisma.teacherLeaveRequest.findFirst({
+      where: { teacherId: teacher.id, status: 'APPROVED', fromDate: { lte: date }, toDate: { gte: date } },
+    }),
+  ]);
+
+  // Why the teacher can't check in right now (null = they can).
+  let blocker: { code: string; message: string; statusCode: number } | null = null;
+  if (teacher.status !== RECORD_STATUS.ACTIVE || !teacher.user.isActive) {
+    blocker = { code: 'TEACHER_INACTIVE', message: 'Your account is inactive — contact your school admin', statusCode: 403 };
+  } else if (record?.teacherStatus) {
+    blocker = {
+      code:       'ALREADY_CHECKED_IN',
+      message:    `You have already checked in today${record.teacherMarkedAt ? ` at ${formatSchoolTime(record.teacherMarkedAt)}` : ''}`,
+      statusCode: 409,
+    };
+  } else if (leave || record?.adminStatus === 'LEAVE') {
+    blocker = { code: 'ON_LEAVE_TODAY', message: 'You are on leave today', statusCode: 409 };
+  } else if (record?.adminStatus === 'HOLIDAY') {
+    blocker = { code: 'HOLIDAY_TODAY', message: 'Today is marked as a holiday', statusCode: 409 };
+  }
+
+  // Why the teacher can't check out right now (null = they can).
+  let checkOutBlocker: { code: string; message: string; statusCode: number } | null = null;
+  if (teacher.status !== RECORD_STATUS.ACTIVE || !teacher.user.isActive) {
+    checkOutBlocker = { code: 'TEACHER_INACTIVE', message: 'Your account is inactive — contact your school admin', statusCode: 403 };
+  } else if (!record?.teacherStatus) {
+    checkOutBlocker = { code: 'NOT_CHECKED_IN', message: 'Check in first — you have not checked in today', statusCode: 409 };
+  } else if (record.teacherCheckOutAt) {
+    checkOutBlocker = {
+      code:       'ALREADY_CHECKED_OUT',
+      message:    `You have already checked out today at ${formatSchoolTime(record.teacherCheckOutAt)}`,
+      statusCode: 409,
+    };
+  }
+
+  return { teacher, dateStr, date, record, blocker, checkOutBlocker };
+};
+
+// ── GET /teacher/my-attendance/today — drives the "Mark attendance" button ─
+export const getMyAttendanceToday = async (userId: string) => {
+  const { dateStr, record, blocker, checkOutBlocker } = await loadTodayCheckIn(userId);
+
+  return {
+    date:            dateStr,
+    teacherStatus:   record?.teacherStatus ?? null,
+    teacherMarkedAt: record?.teacherMarkedAt ?? null,
+    teacherLatitude:  record?.teacherLatitude ?? null,
+    teacherLongitude: record?.teacherLongitude ?? null,
+    adminStatus:     record?.adminStatus ?? null,
+    status:          record?.status ?? null,   // final for the day
+    teacherCheckOutAt: record?.teacherCheckOutAt ?? null,
+    checkedIn:       !!record?.teacherStatus,
+    canCheckIn:      !blocker,
+    reason:          blocker ? { code: blocker.code, message: blocker.message } : null,
+    checkedOut:      !!record?.teacherCheckOutAt,
+    canCheckOut:     !checkOutBlocker,
+    checkOutReason:  checkOutBlocker ? { code: checkOutBlocker.code, message: checkOutBlocker.message } : null,
+    record:          record ? toTeacherAttendanceResponse(record) : null,
+  };
+};
+
+// ── POST /teacher/my-attendance/check-in ─────────────────────────
+export const checkInMyAttendance = async (userId: string, input: CheckInSchema) => {
+  const { teacher, date, record, blocker } = await loadTodayCheckIn(userId);
+
+  const alreadyCheckedIn = async () => {
+    const latest = await prisma.teacherAttendanceRecord.findUnique({
+      where:   { teacherId_date: { teacherId: teacher.id, date } },
+      include: TEACHER_ATTENDANCE_RECORD_INCLUDE,
+    });
+    const err = new Error('You have already checked in today') as any;
+    err.code       = 'ALREADY_CHECKED_IN';
+    err.statusCode = 409;
+    if (latest) err.details = { record: toTeacherAttendanceResponse(latest) };
+    return err;
+  };
+
+  if (blocker) {
+    const err = new Error(blocker.message) as any;
+    err.code       = blocker.code;
+    err.statusCode = blocker.statusCode;
+    if (record) err.details = { record: toTeacherAttendanceResponse(record) };
+    throw err;
+  }
+
+  const now      = new Date();
+  const location = { teacherLatitude: input.latitude ?? null, teacherLongitude: input.longitude ?? null };
+
+  // No row yet → create it; the teacher's status is also the final one.
+  if (!record) {
+    try {
+      const created = await prisma.teacherAttendanceRecord.create({
+        data: {
+          schoolId: teacher.schoolId, teacherId: teacher.id, date,
+          teacherStatus: 'PRESENT', teacherMarkedAt: now, ...location, status: 'PRESENT',
+        },
+        include: TEACHER_ATTENDANCE_RECORD_INCLUDE,
+      });
+      return toTeacherAttendanceResponse(created);
+    } catch (err: any) {
+      // Another request created the row first — fall through to the update.
+      if (err?.code !== 'P2002') throw err;
+    }
+  }
+
+  // Row exists (admin already marked the day) → add the teacher's own status
+  // only; the admin's status stays the final one. The teacherStatus: null
+  // condition makes a double tap / second device a no-op.
+  const updated = await prisma.teacherAttendanceRecord.updateMany({
+    where: { teacherId: teacher.id, date, teacherStatus: null },
+    data:  { teacherStatus: 'PRESENT', teacherMarkedAt: now, ...location },
+  });
+  if (updated.count === 0) throw await alreadyCheckedIn();
+
+  const fresh = await prisma.teacherAttendanceRecord.findUniqueOrThrow({
+    where:   { teacherId_date: { teacherId: teacher.id, date } },
+    include: TEACHER_ATTENDANCE_RECORD_INCLUDE,
+  });
+  return toTeacherAttendanceResponse(fresh);
+};
+
+// ── POST /teacher/my-attendance/check-out ────────────────────────
+// Only after today's check-in, and only once. Records the time (and
+// optional location); never changes the day's status.
+export const checkOutMyAttendance = async (userId: string, input: CheckOutSchema) => {
+  const { teacher, date, record, checkOutBlocker } = await loadTodayCheckIn(userId);
+
+  if (checkOutBlocker) {
+    const err = new Error(checkOutBlocker.message) as any;
+    err.code       = checkOutBlocker.code;
+    err.statusCode = checkOutBlocker.statusCode;
+    if (record) err.details = { record: toTeacherAttendanceResponse(record) };
+    throw err;
+  }
+
+  // teacherCheckOutAt: null makes a double tap / second device a no-op.
+  const updated = await prisma.teacherAttendanceRecord.updateMany({
+    where: { teacherId: teacher.id, date, teacherStatus: { not: null }, teacherCheckOutAt: null },
+    data:  {
+      teacherCheckOutAt:        new Date(),
+      teacherCheckOutLatitude:  input.latitude ?? null,
+      teacherCheckOutLongitude: input.longitude ?? null,
+    },
+  });
+
+  const fresh = await prisma.teacherAttendanceRecord.findUniqueOrThrow({
+    where:   { teacherId_date: { teacherId: teacher.id, date } },
+    include: TEACHER_ATTENDANCE_RECORD_INCLUDE,
+  });
+
+  if (updated.count === 0) {
+    const err = new Error('You have already checked out today') as any;
+    err.code       = 'ALREADY_CHECKED_OUT';
+    err.statusCode = 409;
+    err.details    = { record: toTeacherAttendanceResponse(fresh) };
+    throw err;
+  }
+
+  return toTeacherAttendanceResponse(fresh);
 };
