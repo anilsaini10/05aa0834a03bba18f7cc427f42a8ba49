@@ -130,6 +130,8 @@ model User {
   announcementsCreated         Announcement[]
   eventsCreated                Event[]
   examsCreated                 Exam[]
+  examSchedulesCreated         ExamSchedule[]
+  examMarksGraded              ExamMark[]
   attendanceMarked             AttendanceRecord[]
   homeworkCreated              Homework[]
   homeworkSubmissionsMarked    HomeworkSubmission[]
@@ -202,6 +204,7 @@ model School {
   attendanceRecords        AttendanceRecord[]
   homework                 Homework[]
   classSchedules           ClassSchedule[]
+  examSchedules            ExamSchedule[]
   leaveRequests            LeaveRequest[]
   teacherLeaveRequests     TeacherLeaveRequest[]
   teacherAttendanceRecords TeacherAttendanceRecord[]
@@ -254,19 +257,20 @@ model Event {
 
 // ── Exam ──────────────────────────────────────────────────────
 model Exam {
-  id            String       @id @default(uuid())
+  id            String         @id @default(uuid())
   schoolId      String
-  school        School       @relation(fields: [schoolId], references: [id])
+  school        School         @relation(fields: [schoolId], references: [id])
   title         String
   description   String?
   startDate     DateTime?
   endDate       DateTime?
   createdBy     String
-  createdByUser User         @relation(fields: [createdBy], references: [id])
+  createdByUser User           @relation(fields: [createdBy], references: [id])
   classes       ExamClass[]
   results       ExamResult[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  schedules     ExamSchedule[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([schoolId])
   @@map("exams")
@@ -307,6 +311,66 @@ model ExamResult {
 
   @@unique([examId, studentId])
   @@map("exam_results")
+}
+
+// ── ExamSchedule — one paper in an exam's date sheet ───────────────
+// Which subject a class sits on which date/time, its max marks, the room,
+// and the teacher invigilating. One paper per (exam, class, subject).
+// All sections of a class sit the paper together. date is date-only;
+// startTime/endTime are "HH:MM" 24-hour strings (same as ClassSchedule).
+// Overlap rules (class / invigilator / room on the same date) are enforced
+// in the service, under a per-school lock — see examSchedule.service.ts.
+model ExamSchedule {
+  id            String     @id @default(uuid())
+  schoolId      String
+  school        School     @relation(fields: [schoolId], references: [id])
+  examId        String
+  exam          Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
+  classId       String
+  class         Class      @relation(fields: [classId], references: [id])
+  subjectId     String
+  subject       Subject    @relation(fields: [subjectId], references: [id])
+  date          DateTime   @db.Date
+  startTime     String
+  endTime       String
+  maxMarks      Float
+  roomNo        String?
+  invigilatorId String?
+  invigilator   Teacher?   @relation(fields: [invigilatorId], references: [id], onDelete: SetNull)
+  createdBy     String
+  createdByUser User       @relation(fields: [createdBy], references: [id])
+  marks         ExamMark[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([examId, classId, subjectId])
+  @@index([schoolId, date])
+  @@index([classId, date])
+  @@index([invigilatorId, date])
+  @@map("exam_schedules")
+}
+
+// ── ExamMark — one student's marks on one paper (subject) ───────────
+// Entered by the subject's teacher (or an admin). ExamResult above stays
+// the exam-level overall result; this is the per-subject breakdown.
+model ExamMark {
+  id             String       @id @default(uuid())
+  examScheduleId String
+  examSchedule   ExamSchedule @relation(fields: [examScheduleId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  marksObtained  Float?
+  grade          String?
+  remarks        String?
+  status         ResultStatus @default(PENDING)
+  gradedBy       String?
+  gradedByUser   User?        @relation(fields: [gradedBy], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([examScheduleId, studentId])
+  @@index([studentId])
+  @@map("exam_marks")
 }
 
 // ── AttendanceRecord ────────────────────────────────────────────
@@ -537,6 +601,7 @@ model Class {
   teacherSubjects   TeacherSubject[]
   examClasses       ExamClass[]
   examResults       ExamResult[]
+  examSchedules     ExamSchedule[]
   attendanceRecords AttendanceRecord[]
   homework          Homework[]
   classSchedules    ClassSchedule[]
@@ -576,6 +641,7 @@ model Subject {
   classes        ClassSubject[]
   homework       Homework[]
   classSchedules ClassSchedule[]
+  examSchedules  ExamSchedule[]
 
   @@unique([schoolId, name])
   @@map("subjects")
@@ -617,6 +683,7 @@ model Student {
   schoolId             String
   school               School               @relation(fields: [schoolId], references: [id])
   examResults          ExamResult[]
+  examMarks            ExamMark[]
   attendanceRecords    AttendanceRecord[]
   leaveRequests        LeaveRequest[]
   homeworkSubmissions  HomeworkSubmission[]
@@ -649,6 +716,7 @@ model Teacher {
   subjects          TeacherSubject[]
   sectionsAsTeacher Section[]
   classSchedules    ClassSchedule[]
+  examInvigilations ExamSchedule[]
   leaveRequests     TeacherLeaveRequest[]
   attendanceRecords TeacherAttendanceRecord[]
 
@@ -735,17 +803,32 @@ model TeacherLeaveRequest {
 // concept). One row per teacher per calendar day, same AttendanceStatus
 // enum as student attendance so both share the same status vocabulary.
 model TeacherAttendanceRecord {
-  id           String           @id @default(uuid())
-  schoolId     String
-  school       School           @relation(fields: [schoolId], references: [id])
-  teacherId    String
-  teacher      Teacher          @relation(fields: [teacherId], references: [id])
-  date         DateTime         @db.Date
-  status       AttendanceStatus
-  markedBy     String
-  markedByUser User             @relation(fields: [markedBy], references: [id])
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id                       String            @id @default(uuid())
+  schoolId                 String
+  school                   School            @relation(fields: [schoolId], references: [id])
+  teacherId                String
+  teacher                  Teacher           @relation(fields: [teacherId], references: [id])
+  date                     DateTime          @db.Date
+  // Teacher's own check-in for the day (null until they check in).
+  teacherStatus            AttendanceStatus?
+  teacherMarkedAt          DateTime?
+  // Device location at check-in (null if the app didn't send it).
+  teacherLatitude          Float?
+  teacherLongitude         Float?
+  // Teacher's own check-out for the day (null until they check out).
+  teacherCheckOutAt        DateTime?
+  teacherCheckOutLatitude  Float?
+  teacherCheckOutLongitude Float?
+  // Admin's marking for the day (null until an admin marks it).
+  adminStatus              AttendanceStatus?
+  adminMarkedBy            String?
+  adminMarkedByUser        User?             @relation(fields: [adminMarkedBy], references: [id])
+  adminMarkedAt            DateTime?
+  // Final status used by reports/filters = adminStatus ?? teacherStatus.
+  // Stored (not computed) so queries stay simple; every write keeps it in sync.
+  status                   AttendanceStatus
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
 
   @@unique([teacherId, date])
   @@index([schoolId, date])

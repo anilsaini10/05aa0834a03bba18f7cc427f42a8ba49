@@ -46,8 +46,9 @@ export const createSchoolSchema = z.object({
 });
 
 // Same detail fields, all optional — code is deliberately excluded,
-// it's immutable once assigned.
-export const updateSchoolSchema = z.object({
+// it's immutable once assigned. Exported unrefined so the school ADMIN's
+// own "update my school" endpoint can reuse exactly the same fields.
+export const schoolDetailsFields = z.object({
   name: z.string().min(2, 'School name must be at least 2 characters').max(150).optional(),
 
   board:           z.nativeEnum(Board).optional(),
@@ -79,7 +80,10 @@ export const updateSchoolSchema = z.object({
   classesFrom:               z.string().max(20).optional(),
   classesTo:                 z.string().max(20).optional(),
   academicSessionStartMonth: z.coerce.number().int().min(1).max(12).optional(),
-}).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
+});
+
+export const updateSchoolSchema = schoolDetailsFields
+  .refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 export const createAdminSchema = z.object({
   name:  z.string().min(2, 'Name must be at least 2 characters').max(100),

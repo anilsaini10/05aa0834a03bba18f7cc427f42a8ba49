@@ -79,3 +79,9 @@ export const NOTIFICATION_TYPE = {
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];
+
+// ── School timezone ───────────────────────────────────────────────
+// The server runs in UTC (Render), but "today" for a teacher's check-in
+// must be the school's local calendar day. All schools are in India for
+// now — make this per-school (School.timezone) if that ever changes.
+export const SCHOOL_TIMEZONE = 'Asia/Kolkata';

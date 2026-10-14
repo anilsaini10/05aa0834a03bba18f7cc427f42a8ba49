@@ -19,6 +19,11 @@ import {
   applyMyLeaveSchema,
   listMyLeaveQuerySchema,
   listMyAttendanceRecordsQuerySchema,
+  listMyExamPapersQuerySchema,
+  listPaperStudentsQuerySchema,
+  saveExamMarksSchema,
+  checkInSchema,
+  checkOutSchema,
 } from './teacher.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -417,6 +422,95 @@ export const cancelMyLeaveHandler = async (
   try {
     await teacherService.cancelMyLeave((req as any).user.sub, req.params.leaveId);
     sendSuccess(res, { message: 'Leave request cancelled successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/exams ───────────────────────────────────────────────
+export const listMyExamsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listMyExamPapersQuerySchema.parse(req.query);
+    const result = await teacherService.listMyExamPapers((req as any).user.sub, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/exams/schedule/:scheduleId/students ─────────────────
+export const getExamPaperStudentsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listPaperStudentsQuerySchema.parse(req.query);
+    const result = await teacherService.getExamPaperStudents((req as any).user.sub, req.params.scheduleId, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PUT /teacher/exams/schedule/:scheduleId/marks ────────────────────
+export const saveExamPaperMarksHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = saveExamMarksSchema.parse(req.body);
+    const result = await teacherService.saveExamPaperMarks((req as any).user.sub, req.params.scheduleId, input);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /teacher/my-attendance/today ─────────────────────────────────
+export const getMyAttendanceTodayHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const result = await teacherService.getMyAttendanceToday((req as any).user.sub);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /teacher/my-attendance/check-in ─────────────────────────────
+export const checkInMyAttendanceHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = checkInSchema.parse(req.body ?? {});
+    const record = await teacherService.checkInMyAttendance((req as any).user.sub, input);
+    sendSuccess(res, { message: 'Attendance marked as present', record }, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /teacher/my-attendance/check-out ────────────────────────────
+export const checkOutMyAttendanceHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = checkOutSchema.parse(req.body ?? {});
+    const record = await teacherService.checkOutMyAttendance((req as any).user.sub, input);
+    sendSuccess(res, { message: 'Checked out successfully', record });
   } catch (err) {
     next(err);
   }

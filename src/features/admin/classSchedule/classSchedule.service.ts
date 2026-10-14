@@ -103,6 +103,7 @@ const toScheduleResponse = (s: ScheduleWithRefs): ScheduleResponse => ({
 
 // ── Shared conflict checks (used by both create and update) ────────
 interface ConflictCheckInput {
+  schoolId:  string;
   sectionId: string;
   day:       string;
   teacherId: string | null;
@@ -142,11 +143,12 @@ const runConflictChecks = async (input: ConflictCheckInput): Promise<void> => {
     }
   }
 
-  // 3. Same room, same day, any section — two classes can't share a room
-  //    at the same time.
+  // 3. Same room, same day, any section of THIS school — two classes can't
+  //    share a room at the same time (room names are per-school, so another
+  //    school's "Room 1" is a different room).
   if (input.roomNo) {
     const roomEntries = await prisma.classSchedule.findMany({
-      where: { roomNo: input.roomNo, day: input.day as any, ...exclude },
+      where: { schoolId: input.schoolId, roomNo: input.roomNo, day: input.day as any, ...exclude },
     });
     if (roomEntries.some(e => timesOverlap(e.startTime, e.endTime, input.startTime, input.endTime))) {
       throw conflict(
@@ -253,6 +255,7 @@ export const createSchedule = async (
   }
 
   await runConflictChecks({
+    schoolId,
     sectionId: input.sectionId,
     day:       input.day,
     teacherId: input.teacherId ?? null,
@@ -368,6 +371,7 @@ export const updateSchedule = async (
   const day = input.day ?? existing.day;
 
   await runConflictChecks({
+    schoolId,
     sectionId: existing.sectionId,
     day,
     teacherId: teacherId ?? null,

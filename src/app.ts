@@ -22,6 +22,7 @@ import dashboardRoutes     from './features/admin/dashboard/dashboard.routes';
 import teacherSelfRoutes   from './features/teacher/teacher.routes';
 import studentSelfRoutes   from './features/students/students.routes';
 import superAdminRoutes    from './features/superAdmin/superAdmin.routes';
+import mySchoolRoutes      from './features/admin/school/school.routes';
 
 // ── Middleware ────────────────────────────────────────────────
 import { errorHandler } from './middleware/errorHandler';
@@ -56,6 +57,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/schools', schoolRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/subjects', subjectRoutes);
+app.use('/api/admin/school', mySchoolRoutes);
 app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin/teachers', teacherRoutes);
 app.use('/api/admin/announcements', announcementRoutes);

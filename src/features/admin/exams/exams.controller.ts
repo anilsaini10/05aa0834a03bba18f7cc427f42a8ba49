@@ -8,7 +8,14 @@ import {
   listExamClassStudentsQuerySchema,
   createExamResultSchema,
   updateExamResultSchema,
+  createExamScheduleSchema,
+  bulkCreateExamScheduleSchema,
+  updateExamScheduleSchema,
+  listExamScheduleQuerySchema,
+  listPaperStudentsQuerySchema,
+  saveExamMarksSchema,
 } from './exams.validation';
+import * as examScheduleService from './examSchedule.service';
 import { sendSuccess } from '../../../shared/utils/apiResponse';
 
 const schoolIdOf = (req: Request) => (req as any).user.schoolId;
@@ -151,6 +158,83 @@ export const deleteResultHandler = async (req: Request, res: Response, next: Nex
   try {
     await examsService.deleteExamResult(schoolIdOf(req), req.params.examId, req.params.resultId);
     sendSuccess(res, { message: 'Exam result deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ════════════════════════════════════════════════════════════
+// Exam schedule (date sheet) + per-subject marks
+// ════════════════════════════════════════════════════════════
+
+export const createScheduleHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const input     = createExamScheduleSchema.parse(req.body);
+    const [created] = await examScheduleService.createExamPapers(schoolIdOf(req), req.params.examId, userIdOf(req), [input]);
+    sendSuccess(res, created, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const bulkCreateScheduleHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { papers } = bulkCreateExamScheduleSchema.parse(req.body);
+    const created    = await examScheduleService.createExamPapers(schoolIdOf(req), req.params.examId, userIdOf(req), papers);
+    sendSuccess(res, { items: created }, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const listScheduleHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const query  = listExamScheduleQuerySchema.parse(req.query);
+    const result = await examScheduleService.listExamPapers(schoolIdOf(req), req.params.examId, query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateScheduleHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const input  = updateExamScheduleSchema.parse(req.body);
+    const result = await examScheduleService.updateExamPaper(schoolIdOf(req), req.params.examId, req.params.scheduleId, input);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const deleteScheduleHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    await examScheduleService.deleteExamPaper(schoolIdOf(req), req.params.examId, req.params.scheduleId);
+    sendSuccess(res, { message: 'Exam paper deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const listScheduleStudentsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const query  = listPaperStudentsQuerySchema.parse(req.query);
+    const result = await examScheduleService.listExamPaperStudents(
+      schoolIdOf(req), req.params.examId, req.params.scheduleId, query,
+    );
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const saveScheduleMarksHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const input  = saveExamMarksSchema.parse(req.body);
+    const result = await examScheduleService.saveExamPaperMarks(
+      schoolIdOf(req), req.params.examId, req.params.scheduleId, userIdOf(req), input,
+    );
+    sendSuccess(res, result);
   } catch (err) {
     next(err);
   }

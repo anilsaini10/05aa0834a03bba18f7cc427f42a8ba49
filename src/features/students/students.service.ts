@@ -170,8 +170,8 @@ export const resetPassword = async (
 };
 
 // ── GET /students/exams — exams scheduled for one child's class ─
-// Schedule/details only (title, dates, maxMarks) — not results/marks,
-// which live in ExamResult and aren't exposed to parents here.
+// Exam details only (title, dates, maxMarks) — the date sheet and the
+// child's per-subject marks come from GET /students/exams/:examId.
 export const listMyExams = async (userId: string, query: ListMyExamsQuerySchema) => {
   const student = await requireOwnChild(userId, query.studentId);
 
@@ -195,6 +195,8 @@ export const listMyExams = async (userId: string, query: ListMyExamsQuerySchema)
 // Always returns a `result` object (never null) — status defaults to
 // PENDING with null marks/grade if the admin hasn't recorded a result
 // row yet, so the RN app never has to null-check the whole shape.
+// `subjects` is the class's date sheet for this exam with the child's
+// marks per subject; `summary` totals only the GRADED subjects.
 export const getMyExamResult = async (
   userId: string,
   examId: string,
@@ -208,9 +210,38 @@ export const getMyExamResult = async (
   });
   if (!examClass) throw notFound('This exam is not scheduled for this student\'s class', 'EXAM_NOT_FOUND');
 
-  const result = await prisma.examResult.findUnique({
-    where: { examId_studentId: { examId, studentId: student.id } },
+  const [result, papers] = await Promise.all([
+    prisma.examResult.findUnique({
+      where: { examId_studentId: { examId, studentId: student.id } },
+    }),
+    prisma.examSchedule.findMany({
+      where:   { examId, classId: student.classId },
+      include: { subject: true, marks: { where: { studentId: student.id } } },
+      orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+    }),
+  ]);
+
+  const subjects = papers.map(p => {
+    const mark = p.marks[0];
+    return {
+      scheduleId:    p.id,
+      subjectId:     p.subjectId,
+      subjectName:   p.subject.name,
+      date:          toDateString(p.date),
+      startTime:     p.startTime,
+      endTime:       p.endTime,
+      roomNo:        p.roomNo,
+      maxMarks:      p.maxMarks,
+      marksObtained: mark?.marksObtained ?? null,
+      grade:         mark?.grade ?? null,
+      remarks:       mark?.remarks ?? null,
+      status:        mark?.status ?? 'PENDING',
+    };
   });
+
+  const graded         = subjects.filter(s => s.status === 'GRADED');
+  const gradedMaxMarks = graded.reduce((sum, s) => sum + s.maxMarks, 0);
+  const obtainedMarks  = graded.reduce((sum, s) => sum + (s.marksObtained ?? 0), 0);
 
   return {
     examId:      examClass.exam.id,
@@ -224,6 +255,16 @@ export const getMyExamResult = async (
       grade:         result?.grade ?? null,
       remarks:       result?.remarks ?? null,
       status:        result?.status ?? 'PENDING',
+    },
+    subjects,
+    summary: {
+      totalSubjects:  subjects.length,
+      gradedSubjects: graded.length,
+      absentSubjects: subjects.filter(s => s.status === 'ABSENT').length,
+      totalMaxMarks:  subjects.reduce((sum, s) => sum + s.maxMarks, 0),
+      gradedMaxMarks,
+      obtainedMarks,
+      percentage:     gradedMaxMarks > 0 ? Math.round((obtainedMarks / gradedMaxMarks) * 10000) / 100 : null,
     },
   };
 };

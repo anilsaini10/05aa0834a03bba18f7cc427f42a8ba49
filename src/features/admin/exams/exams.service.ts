@@ -178,6 +178,25 @@ export const updateExam = async (
     throw badRequest('endDate must be on or after startDate', 'INVALID_DATE_RANGE');
   }
 
+  // Papers already on the date sheet must still fit the new range.
+  if (startDate || endDate) {
+    const outside = await prisma.examSchedule.count({
+      where: {
+        examId,
+        OR: [
+          ...(startDate ? [{ date: { lt: new Date(startDate.toISOString().slice(0, 10)) } }] : []),
+          ...(endDate   ? [{ date: { gt: new Date(endDate.toISOString().slice(0, 10)) } }]   : []),
+        ],
+      },
+    });
+    if (outside > 0) {
+      throw conflict(
+        `${outside} scheduled paper(s) fall outside the new exam dates — move them first`,
+        'EXAM_SCHEDULE_OUTSIDE_RANGE',
+      );
+    }
+  }
+
   const exam = await prisma.exam.update({
     where:   { id: examId },
     data:    input,
@@ -253,6 +272,14 @@ export const listExamClasses = async (schoolId: string, examId: string) => {
 export const removeExamClass = async (schoolId: string, examId: string, classId: string): Promise<void> => {
   await requireExam(schoolId, examId);
   await requireExamClass(examId, classId);
+
+  const paperCount = await prisma.examSchedule.count({ where: { examId, classId } });
+  if (paperCount > 0) {
+    throw conflict(
+      'This class has papers on the exam schedule — delete them first',
+      'EXAM_CLASS_HAS_SCHEDULE',
+    );
+  }
 
   const resultCount = await prisma.examResult.count({ where: { examId, classId } });
   if (resultCount > 0) {

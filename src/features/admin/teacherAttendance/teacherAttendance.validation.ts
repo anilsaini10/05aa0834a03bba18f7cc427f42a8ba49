@@ -17,8 +17,10 @@ export const listTeacherAttendanceQuerySchema = z.object({
   date:      z.coerce.date({ errorMap: () => ({ message: 'Invalid date' }) }).optional(),
   from:      z.coerce.date({ errorMap: () => ({ message: 'Invalid from date' }) }).optional(),
   to:        z.coerce.date({ errorMap: () => ({ message: 'Invalid to date' }) }).optional(),
-  status:    z.nativeEnum(AttendanceStatus).optional(),
-  teacherId: z.string().uuid('Invalid teacher id').optional(),
+  status:        z.nativeEnum(AttendanceStatus).optional(),   // final status
+  teacherStatus: z.nativeEnum(AttendanceStatus).optional(),   // teacher's own check-in
+  adminStatus:   z.nativeEnum(AttendanceStatus).optional(),   // admin's marking
+  teacherId:     z.string().uuid('Invalid teacher id').optional(),
 })
   .refine(data => !data.from || !data.to || data.to >= data.from, {
     message: 'to must be on or after from', path: ['to'],
