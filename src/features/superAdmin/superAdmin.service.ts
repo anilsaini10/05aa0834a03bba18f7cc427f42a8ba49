@@ -2,6 +2,7 @@ import { Prisma, School, User } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { hashPassword } from '../../shared/utils/hash';
 import { generateDefaultPassword } from '../../shared/utils/defaultPassword';
+import { resetPasswordToDefault } from '../../shared/services/account.service';
 import {
   CreateSchoolSchema,
   UpdateSchoolSchema,
@@ -355,4 +356,12 @@ export const listAllAdmins = async (query: ListAllAdminsQuerySchema) => {
     total,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+};
+
+// ── POST /super-admin/schools/:schoolId/admins/:adminId/reset-password ─
+// School admin forgot their password → super admin resets it to the default.
+export const resetAdminPassword = async (schoolId: string, adminId: string) => {
+  const admin = await prisma.user.findFirst({ where: { id: adminId, schoolId, role: 'ADMIN' } });
+  if (!admin) throw notFound('Admin not found', 'ADMIN_NOT_FOUND');
+  return resetPasswordToDefault(admin.id);
 };

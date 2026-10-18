@@ -32,6 +32,7 @@ export interface ClassTeacherSectionRef {
 
 export interface TeacherResponse {
   id:               string;
+  userId:           string;
   employeeId:       string;
   name:             string;
   gender:           string;
@@ -71,6 +72,7 @@ const TEACHER_INCLUDE = {
 
 const toTeacherResponse = (teacher: TeacherWithRefs): TeacherResponse => ({
   id:               teacher.id,
+  userId:           teacher.userId,
   employeeId:       teacher.employeeId,
   name:             teacher.user.name,
   gender:           teacher.gender,

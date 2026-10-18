@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import * as studentsService from './students.service';
 import { createStudentSchema, updateStudentSchema, listStudentsQuerySchema } from './students.validation';
 import { sendSuccess } from '../../../shared/utils/apiResponse';
+import { isBulkBody, parseBulkRequest } from '../../../shared/utils/bulkImport';
+import { bulkCreateStudents } from './students.bulk';
 
 // ── POST /admin/students ──────────────────────────────────────
 export const createHandler = async (
@@ -10,8 +12,18 @@ export const createHandler = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const input     = createStudentSchema.parse(req.body);
-    const schoolId  = (req as any).user.schoolId;
+    const schoolId = (req as any).user.schoolId;
+
+    // An array (or { rows: [...] }) is a bulk create from an Excel upload;
+    // a single object keeps the original behaviour.
+    if (isBulkBody(req.body)) {
+      const { rows, dryRun } = parseBulkRequest(req.body, req.query);
+      const result = await bulkCreateStudents(schoolId, rows, dryRun);
+      sendSuccess(res, result, dryRun ? 200 : 201);
+      return;
+    }
+
+    const input    = createStudentSchema.parse(req.body);
     const result    = await studentsService.createStudent(schoolId, input);
     sendSuccess(res, result, 201);
   } catch (err) {

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env';
 import { JwtPayload } from '../types/common';
@@ -12,9 +13,13 @@ export const verifyAccessToken = (token: string): JwtPayload =>
   jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
 
 // ── Refresh Token ─────────────────────────────────────────────
+// jwtid makes every refresh token unique — without it, two logins by the
+// same user within the same second sign identical tokens and the second
+// one hits refresh_tokens.token's UNIQUE index (500 on login).
 export const signRefreshToken = (payload: JwtPayload): string =>
   jwt.sign(payload, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES as any,
+    jwtid:     crypto.randomUUID(),
   });
 
 export const verifyRefreshToken = (token: string): JwtPayload =>

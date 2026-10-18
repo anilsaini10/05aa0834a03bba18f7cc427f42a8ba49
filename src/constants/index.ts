@@ -85,3 +85,14 @@ export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICAT
 // must be the school's local calendar day. All schools are in India for
 // now — make this per-school (School.timezone) if that ever changes.
 export const SCHOOL_TIMEZONE = 'Asia/Kolkata';
+
+// ── Help & support query categories ───────────────────────────────
+// Stored as plain strings on SupportQuery.category (labels contain
+// spaces and "/", so they can't be a Prisma enum).
+export const SUPPORT_QUERY_CATEGORIES = [
+  'Question',
+  'Problem / bug',
+  'Feature request',
+  'Account or login',
+  'Other',
+] as const;

@@ -2,12 +2,24 @@ import { Request, Response, NextFunction } from 'express';
 import * as staffService from './staff.service';
 import { createStaffSchema, updateStaffSchema, listStaffQuerySchema } from './staff.validation';
 import { sendSuccess } from '../../../shared/utils/apiResponse';
+import { isBulkBody, parseBulkRequest } from '../../../shared/utils/bulkImport';
+import { bulkCreateStaff } from './staff.bulk';
 
 // ── POST /admin/staff ────────────────────────────────────────────
 export const createHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const input    = createStaffSchema.parse(req.body);
     const schoolId = (req as any).user.schoolId;
+
+    // An array (or { rows: [...] }) is a bulk create from an Excel upload;
+    // a single object keeps the original behaviour.
+    if (isBulkBody(req.body)) {
+      const { rows, dryRun } = parseBulkRequest(req.body, req.query);
+      const result = await bulkCreateStaff(schoolId, rows, dryRun);
+      sendSuccess(res, result, dryRun ? 200 : 201);
+      return;
+    }
+
+    const input    = createStaffSchema.parse(req.body);
     const result   = await staffService.createStaff(schoolId, input);
     sendSuccess(res, result, 201);
   } catch (err) {

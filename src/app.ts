@@ -23,6 +23,8 @@ import teacherSelfRoutes   from './features/teacher/teacher.routes';
 import studentSelfRoutes   from './features/students/students.routes';
 import superAdminRoutes    from './features/superAdmin/superAdmin.routes';
 import mySchoolRoutes      from './features/admin/school/school.routes';
+import adminUserRoutes     from './features/admin/users/users.routes';
+import { supportRouter, superAdminSupportRouter } from './features/support/support.routes';
 
 // ── Middleware ────────────────────────────────────────────────
 import { errorHandler } from './middleware/errorHandler';
@@ -58,6 +60,7 @@ app.use('/api/schools', schoolRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/admin/school', mySchoolRoutes);
+app.use('/api/admin/users', adminUserRoutes);
 app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin/teachers', teacherRoutes);
 app.use('/api/admin/announcements', announcementRoutes);
@@ -71,6 +74,9 @@ app.use('/api/admin/staff', staffRoutes);
 app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
+app.use('/api/support', supportRouter);
+app.use('/api/admin/support', supportRouter);
+app.use('/api/super-admin/support', superAdminSupportRouter);
 app.use('/api/super-admin', superAdminRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────

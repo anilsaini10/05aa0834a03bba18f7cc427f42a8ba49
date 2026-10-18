@@ -141,6 +141,8 @@ model User {
   teacherLeaveRequestsReviewed TeacherLeaveRequest[]     @relation("TeacherLeaveReviewedBy")
   teacherAttendanceMarked      TeacherAttendanceRecord[]
   passwordResetTokens          PasswordResetToken[]
+  supportQueriesCreated        SupportQuery[]            @relation("SupportQueryCreatedBy")
+  supportQueriesReplied        SupportQuery[]            @relation("SupportQueryRepliedBy")
 
   @@index([schoolId])
   @@map("users")
@@ -209,6 +211,7 @@ model School {
   teacherLeaveRequests     TeacherLeaveRequest[]
   teacherAttendanceRecords TeacherAttendanceRecord[]
   staff                    Staff[]
+  supportQueries           SupportQuery[]
 
   @@map("schools")
 }
@@ -860,4 +863,41 @@ model Staff {
 
   @@index([schoolId])
   @@map("staff")
+}
+
+// ── SupportQuery — help & support requests ─────────────────────────
+// Raised by a school ADMIN, TEACHER or PARENT; answered by SUPER_ADMIN.
+// message/reply hold HTML from a rich-text editor, always stored already
+// sanitized (see shared/utils/sanitizeHtml.ts). category is a plain string
+// validated against SUPPORT_QUERY_CATEGORIES (its labels contain spaces
+// and "/", which a Prisma enum can't hold).
+enum SupportQueryStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportQuery {
+  id            String             @id @default(uuid())
+  schoolId      String
+  school        School             @relation(fields: [schoolId], references: [id])
+  createdBy     String
+  createdByUser User               @relation("SupportQueryCreatedBy", fields: [createdBy], references: [id])
+  // Role of the sender when the query was raised (snapshot).
+  createdByRole Role
+  subject       String
+  category      String?
+  message       String
+  status        SupportQueryStatus @default(OPEN)
+  reply         String?
+  repliedAt     DateTime?
+  repliedBy     String?
+  repliedByUser User?              @relation("SupportQueryRepliedBy", fields: [repliedBy], references: [id])
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([schoolId, createdBy, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("support_queries")
 }
