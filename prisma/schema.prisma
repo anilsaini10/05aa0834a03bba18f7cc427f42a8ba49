@@ -35,8 +35,13 @@ enum AnnouncementAudience {
   PARENT
 }
 
+// HOLIDAY / GOVERNMENT_HOLIDAY / VACATION mean the school is closed on
+// those dates (see SCHOOL_CLOSED_EVENT_TYPES) — the academic calendar
+// counts them out of working days.
 enum EventType {
   HOLIDAY
+  GOVERNMENT_HOLIDAY
+  VACATION
   EXAM
   MEETING
   ACTIVITY

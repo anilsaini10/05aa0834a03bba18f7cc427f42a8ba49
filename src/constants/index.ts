@@ -96,3 +96,12 @@ export const SUPPORT_QUERY_CATEGORIES = [
   'Account or login',
   'Other',
 ] as const;
+
+// ── Academic calendar ─────────────────────────────────────────────
+// Event types on which the school is closed — the academic calendar
+// counts these dates out of working days. Sundays are always off.
+export const SCHOOL_CLOSED_EVENT_TYPES = ['HOLIDAY', 'GOVERNMENT_HOLIDAY', 'VACATION'] as const;
+
+// Used when School.academicSessionStartMonth isn't set (April, as in
+// most Indian schools).
+export const DEFAULT_ACADEMIC_SESSION_START_MONTH = 4;

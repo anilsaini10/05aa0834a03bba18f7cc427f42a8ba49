@@ -7,6 +7,10 @@ import {
   listTeachersQuerySchema,
 } from './teachers.validation';
 import { sendSuccess } from '../../../shared/utils/apiResponse';
+import {
+  availabilityQuerySchema, freeSlotsQuerySchema,
+  getTeacherAvailability, getTeacherFreeSlots,
+} from './teachers.availability';
 import { isBulkBody, parseBulkRequest } from '../../../shared/utils/bulkImport';
 import { bulkCreateTeachers } from './teachers.bulk';
 
@@ -126,6 +130,26 @@ export const listHandler = async (
     const schoolId = (req as any).user.schoolId;
     const result   = await teachersService.listTeachers(schoolId, query);
     sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /admin/teachers/availability ─────────────────────────────────
+export const availabilityHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const query = availabilityQuerySchema.parse(req.query);
+    sendSuccess(res, await getTeacherAvailability((req as any).user.schoolId, query));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /admin/teachers/free-slots ───────────────────────────────────
+export const freeSlotsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const query = freeSlotsQuerySchema.parse(req.query);
+    sendSuccess(res, await getTeacherFreeSlots((req as any).user.schoolId, query));
   } catch (err) {
     next(err);
   }
