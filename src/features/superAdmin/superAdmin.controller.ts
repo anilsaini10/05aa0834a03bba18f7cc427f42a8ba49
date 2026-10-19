@@ -147,3 +147,17 @@ export const listAllAdminsHandler = async (
     next(err);
   }
 };
+
+// ── POST /super-admin/schools/:schoolId/admins/:adminId/reset-password ─
+export const resetAdminPasswordHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const result = await superAdminService.resetAdminPassword(req.params.schoolId, req.params.adminId);
+    sendSuccess(res, { message: 'Password reset to the default. The user must log in again.', ...result });
+  } catch (err) {
+    next(err);
+  }
+};

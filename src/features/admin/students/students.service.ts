@@ -18,6 +18,7 @@ export interface StudentResponse {
   sectionId:            string;
   sectionName:          string;
   rollNo:               number;
+  parentUserId:         string;
   parentName:           string;
   parentPhone:          string;
   parentEmail:          string;
@@ -69,6 +70,7 @@ const toStudentResponse = (student: StudentWithRefs): StudentResponse => ({
   sectionId:            student.sectionId,
   sectionName:          student.section.name,
   rollNo:               student.rollNo,
+  parentUserId:         student.parentUserId,
   parentName:           student.parentName,
   parentPhone:          student.parentPhone,
   parentEmail:          student.parentEmail,

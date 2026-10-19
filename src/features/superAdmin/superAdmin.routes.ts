@@ -8,6 +8,7 @@ import {
   listAdminsHandler,
   updateAdminHandler,
   setAdminStatusHandler,
+  resetAdminPasswordHandler,
   listAllAdminsHandler,
 } from './superAdmin.controller';
 import { authGuard } from '../../middleware/authGuard';
@@ -25,6 +26,7 @@ router.post('/schools/:schoolId/admins',                 createAdminHandler);
 router.get('/schools/:schoolId/admins',                  listAdminsHandler);
 router.patch('/schools/:schoolId/admins/:adminId',       updateAdminHandler);
 router.patch('/schools/:schoolId/admins/:adminId/status', setAdminStatusHandler);
+router.post('/schools/:schoolId/admins/:adminId/reset-password', resetAdminPasswordHandler);
 router.get('/admins',                                    listAllAdminsHandler);
 
 export default router;

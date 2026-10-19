@@ -4,7 +4,7 @@ import { hashPassword, comparePassword } from '../../shared/utils/hash';
 import { generateOtp } from '../../shared/utils/otp';
 import { sendMail } from '../../config/mailer';
 import { sendSms } from '../../config/sms';
-import { toE164 } from '../../shared/utils/phone';
+import { toE164, normalizePhone } from '../../shared/utils/phone';
 import { env } from '../../config/env';
 import { changeOwnPassword } from '../../shared/services/account.service';
 import {
@@ -128,6 +128,20 @@ const assertSchoolScope = (role: Role, schoolId?: string): boolean => {
   return isSchoolScoped;
 };
 
+// ── `identifier` is an email or a mobile number. Emails match
+//    case-insensitively; a mobile number in any common format (+91…, 0…,
+//    spaces, dashes) is normalized to the stored 10-digit form, same as the
+//    OTP login. The raw value is also tried so phones saved before
+//    normalization existed still match. ────────────────────────────
+const identifierMatchers = (identifier: string) => {
+  const value = identifier.trim();
+  if (value.includes('@')) {
+    return [{ email: { equals: value, mode: 'insensitive' as const } }];
+  }
+  const phone = normalizePhone(value);
+  return phone && phone !== value ? [{ phone }, { phone: value }] : [{ phone: value }];
+};
+
 // ── Login — school-scoped for TEACHER/PARENT, global for ADMIN/SUPER_ADMIN ─
 export const login = async (
   input: LoginInput,
@@ -140,7 +154,7 @@ export const login = async (
     where: {
       role,
       ...(isSchoolScoped ? { schoolId } : {}),
-      OR: [{ email: identifier }, { phone: identifier }],
+      OR: identifierMatchers(identifier),
     },
     include: { school: true },
   });

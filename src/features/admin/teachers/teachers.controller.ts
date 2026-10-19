@@ -7,6 +7,12 @@ import {
   listTeachersQuerySchema,
 } from './teachers.validation';
 import { sendSuccess } from '../../../shared/utils/apiResponse';
+import {
+  availabilityQuerySchema, freeSlotsQuerySchema,
+  getTeacherAvailability, getTeacherFreeSlots,
+} from './teachers.availability';
+import { isBulkBody, parseBulkRequest } from '../../../shared/utils/bulkImport';
+import { bulkCreateTeachers } from './teachers.bulk';
 
 // ── POST /admin/teachers ──────────────────────────────────────
 export const createHandler = async (
@@ -15,8 +21,18 @@ export const createHandler = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const input    = createTeacherSchema.parse(req.body);
     const schoolId = (req as any).user.schoolId;
+
+    // An array (or { rows: [...] }) is a bulk create from an Excel upload;
+    // a single object keeps the original behaviour.
+    if (isBulkBody(req.body)) {
+      const { rows, dryRun } = parseBulkRequest(req.body, req.query);
+      const result = await bulkCreateTeachers(schoolId, rows, dryRun);
+      sendSuccess(res, result, dryRun ? 200 : 201);
+      return;
+    }
+
+    const input    = createTeacherSchema.parse(req.body);
     const result   = await teachersService.createTeacher(schoolId, input);
     sendSuccess(res, result, 201);
   } catch (err) {
@@ -114,6 +130,26 @@ export const listHandler = async (
     const schoolId = (req as any).user.schoolId;
     const result   = await teachersService.listTeachers(schoolId, query);
     sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /admin/teachers/availability ─────────────────────────────────
+export const availabilityHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const query = availabilityQuerySchema.parse(req.query);
+    sendSuccess(res, await getTeacherAvailability((req as any).user.schoolId, query));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /admin/teachers/free-slots ───────────────────────────────────
+export const freeSlotsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const query = freeSlotsQuerySchema.parse(req.query);
+    sendSuccess(res, await getTeacherFreeSlots((req as any).user.schoolId, query));
   } catch (err) {
     next(err);
   }
