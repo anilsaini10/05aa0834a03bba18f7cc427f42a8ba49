@@ -116,6 +116,10 @@ model User {
   name         String
   email        String   @unique
   phone        String?  @unique
+  // Optional login id (ADMIN / SUPER_ADMIN / TEACHER). Stored lowercase,
+  // always starts with a letter so it can't be mistaken for a phone
+  // number or email at login (see shared/utils/username.ts).
+  username     String?  @unique
   passwordHash String
   role         Role
   // Nullable ONLY for SUPER_ADMIN — enforced in app code + a DB CHECK
@@ -148,6 +152,10 @@ model User {
   passwordResetTokens          PasswordResetToken[]
   supportQueriesCreated        SupportQuery[]            @relation("SupportQueryCreatedBy")
   supportQueriesReplied        SupportQuery[]            @relation("SupportQueryRepliedBy")
+  subscriptions                Subscription[]            @relation("SubscriptionUser")
+  subscriptionsPaid            Subscription[]            @relation("SubscriptionPaidBy")
+  subscriptionsActivated       Subscription[]            @relation("SubscriptionActivatedBy")
+  payments                     Payment[]
 
   @@index([schoolId])
   @@map("users")
@@ -217,6 +225,9 @@ model School {
   teacherAttendanceRecords TeacherAttendanceRecord[]
   staff                    Staff[]
   supportQueries           SupportQuery[]
+  subscriptionPlans        SubscriptionPlan[]
+  subscriptions            Subscription[]
+  payments                 Payment[]
 
   @@map("schools")
 }
@@ -905,4 +916,215 @@ model SupportQuery {
   @@index([schoolId, createdBy, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@map("support_queries")
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Subscriptions
+// ──────────────────────────────────────────────────────────────────
+// Feature            — a lockable piece of the app ("homework", "ad_free").
+//                      isPaid = false → free for everyone, never checked.
+// SubscriptionPlan   — what's sold; SELF plans are bought by a user for
+//                      themselves, SCHOOL plans by a school ADMIN for the
+//                      whole school.
+// PlanFeature        — which features a plan unlocks, and for which role
+//                      (a SCHOOL plan can give parents and teachers
+//                      different features).
+// PlanPrice          — duration options of a plan: intervalCount ×
+//                      intervalUnit (1 MONTH, 3 MONTH, 6 MONTH, 1 YEAR…).
+// Subscription       — one purchased period. No auto-renew: renewing
+//                      creates a new row starting where the last one ends.
+// Payment            — money received against a subscription.
+//
+// Subscription.status only stores what happened (PENDING / ACTIVE /
+// FAILED / CANCELLED); EXPIRED, UPCOMING and EXPIRING_SOON are computed
+// from startDate/endDate at read time (see subscriptionStatus.ts), so
+// no cron job is needed for access to stop on time.
+// ══════════════════════════════════════════════════════════════════
+enum PlanScope {
+  SELF
+  SCHOOL
+}
+
+enum PlanType {
+  BASE
+  ADDON
+}
+
+enum IntervalUnit {
+  DAY
+  MONTH
+  YEAR
+}
+
+enum SubscriberType {
+  USER
+  SCHOOL
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  FAILED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  CREATED
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentGateway {
+  MANUAL
+  RAZORPAY
+}
+
+model Feature {
+  id          String   @id @default(uuid())
+  // Stable identifier used in code (requireFeature('homework')).
+  key         String   @unique
+  name        String
+  description String?
+  isPaid      Boolean  @default(true)
+  // Roles this feature applies to.
+  roles       Role[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  plans PlanFeature[]
+
+  @@map("features")
+}
+
+model SubscriptionPlan {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  description String?
+  scope       PlanScope @default(SELF)
+  planType    PlanType  @default(BASE)
+  // Who can buy it — always ADMIN for SCHOOL plans.
+  targetRole  Role
+  // null → offered to every school; set → only to this school.
+  schoolId    String?
+  school      School?   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  features      PlanFeature[]
+  prices        PlanPrice[]
+  subscriptions Subscription[]
+
+  @@index([targetRole, isActive])
+  @@map("subscription_plans")
+}
+
+model PlanFeature {
+  id        String           @id @default(uuid())
+  planId    String
+  plan      SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  featureId String
+  feature   Feature          @relation(fields: [featureId], references: [id], onDelete: Restrict)
+  // Role that gets this feature through the plan.
+  role      Role
+  createdAt DateTime         @default(now())
+
+  @@unique([planId, featureId, role])
+  @@index([featureId])
+  @@map("plan_features")
+}
+
+model PlanPrice {
+  id            String           @id @default(uuid())
+  planId        String
+  plan          SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  label         String?
+  intervalUnit  IntervalUnit
+  intervalCount Int
+  // Paise (₹1 = 100).
+  amount        Int
+  currency      String           @default("INR")
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  subscriptions Subscription[]
+
+  @@unique([planId, intervalUnit, intervalCount])
+  @@map("plan_prices")
+}
+
+model Subscription {
+  id             String         @id @default(uuid())
+  subscriberType SubscriberType
+  // Set for USER subscriptions, null for SCHOOL ones.
+  userId         String?
+  user           User?          @relation("SubscriptionUser", fields: [userId], references: [id], onDelete: Restrict)
+  schoolId       String
+  school         School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  // Role of the buyer at purchase time (snapshot).
+  role           Role
+  paidByUserId   String
+  paidByUser     User           @relation("SubscriptionPaidBy", fields: [paidByUserId], references: [id], onDelete: Restrict)
+
+  planId        String
+  plan          SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  planPriceId   String
+  planPrice     PlanPrice        @relation(fields: [planPriceId], references: [id], onDelete: Restrict)
+  // Price as it was when bought — later price edits don't touch it.
+  amount        Int
+  currency      String           @default("INR")
+  intervalUnit  IntervalUnit
+  intervalCount Int
+
+  status          SubscriptionStatus @default(PENDING)
+  // Set on activation; null while PENDING.
+  startDate       DateTime?
+  endDate         DateTime?
+  activatedAt     DateTime?
+  // Set when a SUPER_ADMIN activated it by hand (offline payment / grant).
+  activatedBy     String?
+  activatedByUser User?              @relation("SubscriptionActivatedBy", fields: [activatedBy], references: [id], onDelete: SetNull)
+  cancelledAt     DateTime?
+  note            String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  payments Payment[]
+
+  @@index([userId, status, endDate])
+  @@index([schoolId, subscriberType, status, endDate])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id               String         @id @default(uuid())
+  subscriptionId   String
+  subscription     Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  schoolId         String
+  school           School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  amount           Int
+  currency         String         @default("INR")
+  status           PaymentStatus  @default(CREATED)
+  gateway          PaymentGateway @default(MANUAL)
+  gatewayOrderId   String?
+  // Unique so a gateway payment can never be counted twice.
+  gatewayPaymentId String?        @unique
+  // Free-text reference for manual payments (UTR, cheque no., …).
+  reference        String?
+  rawResponse      Json?
+  paidAt           DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([subscriptionId])
+  @@index([schoolId, createdAt(sort: Desc)])
+  @@map("payments")
 }

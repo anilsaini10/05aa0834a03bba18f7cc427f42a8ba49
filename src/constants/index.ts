@@ -105,3 +105,54 @@ export const SCHOOL_CLOSED_EVENT_TYPES = ['HOLIDAY', 'GOVERNMENT_HOLIDAY', 'VACA
 // Used when School.academicSessionStartMonth isn't set (April, as in
 // most Indian schools).
 export const DEFAULT_ACADEMIC_SESSION_START_MONTH = 4;
+
+// ── Subscriptions ─────────────────────────────────────────────────
+// Subscription.status in the DB only records what happened (PENDING /
+// ACTIVE / FAILED / CANCELLED). The status returned by the API is
+// COMPUTED from it plus startDate/endDate (see subscriptionStatus.ts) —
+// so expiry needs no cron job.
+export const SUBSCRIPTION_STATUS = {
+  PENDING_PAYMENT: 'PENDING_PAYMENT',   // created, not paid yet
+  PAYMENT_FAILED:  'PAYMENT_FAILED',
+  UPCOMING:        'UPCOMING',          // paid renewal, starts after the current one ends
+  ACTIVE:          'ACTIVE',
+  EXPIRING_SOON:   'EXPIRING_SOON',     // active, ends within SUBSCRIPTION_EXPIRING_SOON_DAYS
+  EXPIRED:         'EXPIRED',
+  CANCELLED:       'CANCELLED',
+} as const;
+
+export type SubscriptionComputedStatus = (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];
+
+export const SUBSCRIPTION_STATUS_VALUES = Object.values(SUBSCRIPTION_STATUS) as [
+  SubscriptionComputedStatus, ...SubscriptionComputedStatus[]
+];
+
+// Statuses in which the subscription unlocks its features right now.
+export const SUBSCRIPTION_LIVE_STATUSES: readonly SubscriptionComputedStatus[] = [
+  SUBSCRIPTION_STATUS.ACTIVE,
+  SUBSCRIPTION_STATUS.EXPIRING_SOON,
+];
+
+export const SUBSCRIPTION_EXPIRING_SOON_DAYS = 7;
+
+// Per-feature access returned by GET /subscription/entitlements.
+export const FEATURE_ACCESS_STATUS = {
+  FREE:             'FREE',
+  ACTIVE:           'ACTIVE',
+  EXPIRING_SOON:    'EXPIRING_SOON',
+  PAYMENT_REQUIRED: 'PAYMENT_REQUIRED',
+} as const;
+
+export type FeatureAccessStatus = (typeof FEATURE_ACCESS_STATUS)[keyof typeof FEATURE_ACCESS_STATUS];
+
+// Why a feature is PAYMENT_REQUIRED.
+export const FEATURE_LOCK_REASON = {
+  NEVER_SUBSCRIBED: 'NEVER_SUBSCRIBED',
+  PENDING_PAYMENT:  'PENDING_PAYMENT',
+  EXPIRED:          'EXPIRED',
+} as const;
+
+export type FeatureLockReason = (typeof FEATURE_LOCK_REASON)[keyof typeof FEATURE_LOCK_REASON];
+
+// Roles a plan or feature can target (SUPER_ADMIN never pays).
+export const SUBSCRIBER_ROLES = ['ADMIN', 'TEACHER', 'PARENT'] as const;

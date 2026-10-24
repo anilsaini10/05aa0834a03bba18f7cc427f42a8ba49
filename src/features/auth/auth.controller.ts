@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as authService from './auth.service';
 import {
-  signupSchema, loginSchema, refreshSchema, logoutSchema, resetPasswordSchema,
+  signupSchema, loginSchema, refreshSchema, logoutSchema, resetPasswordSchema, updateUsernameSchema,
   forgotPasswordSchema, resetPasswordConfirmSchema,
   sendLoginOtpSchema, verifyLoginOtpSchema,
 } from './auth.validation';
@@ -110,6 +110,21 @@ export const resetPasswordHandler = async (
     const { currentPassword, newPassword } = resetPasswordSchema.parse(req.body);
     await authService.resetPassword((req as any).user.sub, currentPassword, newPassword);
     sendSuccess(res, { message: 'Password updated successfully. Please log in again on other devices.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /auth/username ──────────────────────────────────────
+export const updateUsernameHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { username } = updateUsernameSchema.parse(req.body);
+    const user = await authService.updateOwnUsername((req as any).user.sub, username ?? null);
+    sendSuccess(res, { user });
   } catch (err) {
     next(err);
   }

@@ -103,6 +103,7 @@ export const getProfile = async (userId: string) => {
     employeeId:       teacher.employeeId,
     name:             teacher.user.name,
     email:            teacher.user.email,
+    username:         teacher.user.username,
     phone:            teacher.user.phone,
     gender:           teacher.gender,
     subjects: teacher.subjects.map(ts => ({

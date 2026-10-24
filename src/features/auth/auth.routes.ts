@@ -8,6 +8,7 @@ import {
   logoutHandler,
   meHandler,
   resetPasswordHandler,
+  updateUsernameHandler,
   forgotPasswordHandler,
   resetPasswordConfirmHandler,
 } from './auth.controller';
@@ -24,6 +25,7 @@ router.post('/refresh', refreshHandler);
 router.post('/logout',  logoutHandler);
 router.get('/me',       authGuard, meHandler);
 router.post('/reset-password', authGuard, roleGuard('ADMIN', 'SUPER_ADMIN'), resetPasswordHandler);
+router.patch('/username', authGuard, roleGuard('ADMIN', 'SUPER_ADMIN'), updateUsernameHandler);
 router.post('/forgot-password',        forgotPasswordHandler);
 router.post('/reset-password/confirm', resetPasswordConfirmHandler);
 

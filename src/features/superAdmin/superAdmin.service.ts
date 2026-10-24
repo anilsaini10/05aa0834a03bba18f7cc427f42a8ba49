@@ -1,6 +1,7 @@
 import { Prisma, School, User } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { hashPassword } from '../../shared/utils/hash';
+import { assertUsernameAvailable } from '../../shared/utils/username';
 import { generateDefaultPassword } from '../../shared/utils/defaultPassword';
 import { resetPasswordToDefault } from '../../shared/services/account.service';
 import {
@@ -54,6 +55,7 @@ export interface AdminResponse {
   id:        string;
   name:      string;
   email:     string;
+  username:  string | null;
   phone:     string | null;
   schoolId:  string;
   isActive:  boolean;
@@ -128,6 +130,7 @@ const toAdminResponse = (u: User): AdminResponse => ({
   id:        u.id,
   name:      u.name,
   email:     u.email,
+  username:  u.username,
   phone:     u.phone,
   schoolId:  u.schoolId as string,
   isActive:  u.isActive,
@@ -149,6 +152,7 @@ export const createSchool = async (
   if (adminInput) {
     const existingUser = await prisma.user.findUnique({ where: { email: adminInput.email } });
     if (existingUser) throw conflict('Email already registered', 'EMAIL_TAKEN');
+    await assertUsernameAvailable(adminInput.username);
 
     defaultPassword   = generateDefaultPassword(adminInput.email);
     adminPasswordHash = await hashPassword(defaultPassword);
@@ -161,9 +165,10 @@ export const createSchool = async (
 
     const admin = await tx.user.create({
       data: {
-        name:  adminInput.name,
-        email: adminInput.email,
-        phone: adminInput.phone,
+        name:     adminInput.name,
+        email:    adminInput.email,
+        username: adminInput.username ?? null,
+        phone:    adminInput.phone,
         passwordHash: adminPasswordHash!,
         role:  'ADMIN',
         schoolId: school.id,
@@ -242,15 +247,17 @@ export const createAdminForSchool = async (
 
   const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
   if (existingUser) throw conflict('Email already registered', 'EMAIL_TAKEN');
+  await assertUsernameAvailable(input.username);
 
   const defaultPassword = generateDefaultPassword(input.email);
   const passwordHash    = await hashPassword(defaultPassword);
 
   const admin = await prisma.user.create({
     data: {
-      name:  input.name,
-      email: input.email,
-      phone: input.phone,
+      name:     input.name,
+      email:    input.email,
+      username: input.username ?? null,
+      phone:    input.phone,
       passwordHash,
       role:  'ADMIN',
       schoolId,
@@ -278,6 +285,7 @@ export const updateAdmin = async (
     const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
     if (existingUser) throw conflict('Email already registered', 'EMAIL_TAKEN');
   }
+  await assertUsernameAvailable(input.username, adminId);
 
   const updated = await prisma.user.update({ where: { id: adminId }, data: input });
   return toAdminResponse(updated);
@@ -328,8 +336,9 @@ export const listAllAdmins = async (query: ListAllAdminsQuerySchema) => {
     ...(schoolId ? { schoolId } : {}),
     ...(search ? {
       OR: [
-        { name:  { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
+        { name:     { contains: search, mode: 'insensitive' } },
+        { email:    { contains: search, mode: 'insensitive' } },
+        { username: { contains: search, mode: 'insensitive' } },
       ],
     } : {}),
   };
