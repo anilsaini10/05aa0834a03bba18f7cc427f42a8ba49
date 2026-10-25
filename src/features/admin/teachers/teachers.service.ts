@@ -1,6 +1,7 @@
 import { Prisma, Teacher, User, TeacherSubject, Subject, Class, Section } from '@prisma/client';
 import { prisma } from '../../../config/db';
 import { hashPassword } from '../../../shared/utils/hash';
+import { assertUsernameAvailable } from '../../../shared/utils/username';
 import { generateDefaultPassword } from '../../../shared/utils/defaultPassword';
 import { RECORD_STATUS, RECORD_STATUS_FILTER_ALL } from '../../../constants';
 import {
@@ -37,6 +38,7 @@ export interface TeacherResponse {
   name:             string;
   gender:           string;
   email:            string;
+  username:         string | null;
   phone:            string | null;
   subjects:         TeacherSubjectRef[];
   classTeacherOf:   ClassTeacherSectionRef[];
@@ -77,6 +79,7 @@ const toTeacherResponse = (teacher: TeacherWithRefs): TeacherResponse => ({
   name:             teacher.user.name,
   gender:           teacher.gender,
   email:            teacher.user.email,
+  username:         teacher.user.username,
   phone:            teacher.user.phone,
   subjects: teacher.subjects.map(ts => ({
     subjectId: ts.subject.id,
@@ -114,6 +117,7 @@ export const createTeacher = async (
   if (existingUser) {
     throw conflict('Email already registered', 'EMAIL_TAKEN');
   }
+  await assertUsernameAvailable(input.username);
 
   if (input.classTeacherSectionId) {
     const section = await prisma.section.findFirst({
@@ -134,11 +138,12 @@ export const createTeacher = async (
   const teacher = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
-        name:  input.name,
-        email: input.email,
-        phone: input.phone,
+        name:     input.name,
+        email:    input.email,
+        username: input.username ?? null,
+        phone:    input.phone,
         passwordHash,
-        role:  'TEACHER',
+        role:     'TEACHER',
         schoolId,
       },
     });
@@ -197,6 +202,7 @@ export const updateTeacher = async (
     const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
     if (existingUser) throw conflict('Email already registered', 'EMAIL_TAKEN');
   }
+  await assertUsernameAvailable(input.username, teacher.userId);
 
   if (input.classTeacherSectionId) {
     const section = await prisma.section.findFirst({
@@ -211,16 +217,17 @@ export const updateTeacher = async (
     }
   }
 
-  const { name, email, phone, classTeacherSectionId, ...teacherFields } = input;
+  const { name, email, username, phone, classTeacherSectionId, ...teacherFields } = input;
 
   await prisma.$transaction(async (tx) => {
-    if (name !== undefined || email !== undefined || phone !== undefined) {
+    if (name !== undefined || email !== undefined || username !== undefined || phone !== undefined) {
       await tx.user.update({
         where: { id: teacher.userId },
         data: {
-          ...(name  !== undefined ? { name }  : {}),
-          ...(email !== undefined ? { email } : {}),
-          ...(phone !== undefined ? { phone } : {}),
+          ...(name     !== undefined ? { name }     : {}),
+          ...(email    !== undefined ? { email }    : {}),
+          ...(username !== undefined ? { username } : {}),
+          ...(phone    !== undefined ? { phone }    : {}),
         },
       });
     }
@@ -354,6 +361,7 @@ export const listTeachers = async (schoolId: string, query: ListTeachersQuerySch
         { employeeId: { contains: search, mode: 'insensitive' } },
         { user: { name:  { contains: search, mode: 'insensitive' } } },
         { user: { email: { contains: search, mode: 'insensitive' } } },
+        { user: { username: { contains: search, mode: 'insensitive' } } },
       ],
     } : {}),
   };

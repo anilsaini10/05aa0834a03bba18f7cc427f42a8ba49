@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { optionalUsernameField } from '../../shared/utils/username';
 import { Board, SchoolType } from '@prisma/client';
 
 // city/contactEmail are required on create; every other detail field is
@@ -39,9 +40,10 @@ export const createSchoolSchema = z.object({
   academicSessionStartMonth: z.coerce.number().int().min(1).max(12).optional(),
 
   admin: z.object({
-    name:  z.string().min(2, 'Name must be at least 2 characters').max(100),
-    email: z.string().email('Invalid email address'),
-    phone: z.string().min(10).max(15).optional(),
+    name:     z.string().min(2, 'Name must be at least 2 characters').max(100),
+    email:    z.string().email('Invalid email address'),
+    username: optionalUsernameField,
+    phone:    z.string().min(10).max(15).optional(),
   }).optional(),
 });
 
@@ -86,15 +88,18 @@ export const updateSchoolSchema = schoolDetailsFields
   .refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 export const createAdminSchema = z.object({
-  name:  z.string().min(2, 'Name must be at least 2 characters').max(100),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().min(10).max(15).optional(),
+  name:     z.string().min(2, 'Name must be at least 2 characters').max(100),
+  email:    z.string().email('Invalid email address'),
+  username: optionalUsernameField,
+  phone:    z.string().min(10).max(15).optional(),
 });
 
+// username: null / "" removes it.
 export const updateAdminSchema = z.object({
-  name:  z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
-  email: z.string().email('Invalid email address').optional(),
-  phone: z.string().min(10).max(15).optional(),
+  name:     z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
+  email:    z.string().email('Invalid email address').optional(),
+  username: optionalUsernameField,
+  phone:    z.string().min(10).max(15).optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 export const updateAdminStatusSchema = z.object({

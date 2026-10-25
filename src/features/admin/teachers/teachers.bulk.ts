@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../../config/db';
 import { hashPassword } from '../../../shared/utils/hash';
 import { generateDefaultPassword } from '../../../shared/utils/defaultPassword';
+import { USERNAME_PATTERN } from '../../../shared/utils/username';
 import {
   cellString, optionalCellString, cellNumber, optionalCellNumber, cellGender, cellDate, cellPhone, cellList,
   parseRows, bulkValidationError, findDuplicates, BulkRowResult,
@@ -18,6 +19,8 @@ import {
 export const bulkTeacherRowSchema = z.object({
   name:                  cellString(z.string({ required_error: 'name is required' }).min(2, 'Name must be at least 2 characters').max(100)),
   email:                 cellString(z.string({ required_error: 'email is required' }).email('Invalid email address')),
+  username:              optionalCellString(z.string().trim().toLowerCase()
+                           .regex(USERNAME_PATTERN, 'Username must be 3-30 characters, start with a letter, and use only letters, digits, "." or "_"')),
   phone:                 cellPhone('phone'),
   gender:                cellGender,
   salary:                cellNumber(z.number({ required_error: 'salary is required', invalid_type_error: 'salary must be a number' })
@@ -59,19 +62,24 @@ export const bulkCreateTeachers = async (schoolId: string, rows: unknown[], dryR
     where:  { OR: [
       ...valid.map(v => ({ email: { equals: v.data.email, mode: 'insensitive' as const } })),
       { phone: { in: valid.map(v => v.data.phone) } },
+      { username: { in: valid.flatMap(v => (v.data.username ? [v.data.username] : [])) } },
     ] },
-    select: { email: true, phone: true },
+    select: { email: true, phone: true, username: true },
   }) : [];
-  const takenEmails = new Set(existing.map(u => u.email.toLowerCase()));
-  const takenPhones = new Set(existing.map(u => u.phone).filter(Boolean));
-  const emailDupes  = findDuplicates(valid.map(v => ({ index: v.index, key: v.data.email.toLowerCase() })));
-  const phoneDupes  = findDuplicates(valid.map(v => ({ index: v.index, key: v.data.phone })));
+  const takenEmails    = new Set(existing.map(u => u.email.toLowerCase()));
+  const takenPhones    = new Set(existing.map(u => u.phone).filter(Boolean));
+  const takenUsernames = new Set(existing.map(u => u.username).filter(Boolean));
+  const emailDupes     = findDuplicates(valid.map(v => ({ index: v.index, key: v.data.email.toLowerCase() })));
+  const phoneDupes     = findDuplicates(valid.map(v => ({ index: v.index, key: v.data.phone })));
+  const usernameDupes  = findDuplicates(valid.flatMap(v => (v.data.username ? [{ index: v.index, key: v.data.username }] : [])));
 
   for (const v of valid) {
     if (takenEmails.has(v.data.email.toLowerCase())) addError(v.index, 'email: Email already registered');
     if (takenPhones.has(v.data.phone))               addError(v.index, 'phone: Phone number already registered');
-    if (emailDupes.has(v.index)) addError(v.index, `email: Same email as row index ${emailDupes.get(v.index)}`);
-    if (phoneDupes.has(v.index)) addError(v.index, `phone: Same phone as row index ${phoneDupes.get(v.index)}`);
+    if (v.data.username && takenUsernames.has(v.data.username)) addError(v.index, 'username: Username already taken');
+    if (emailDupes.has(v.index))    addError(v.index, `email: Same email as row index ${emailDupes.get(v.index)}`);
+    if (phoneDupes.has(v.index))    addError(v.index, `phone: Same phone as row index ${phoneDupes.get(v.index)}`);
+    if (usernameDupes.has(v.index)) addError(v.index, `username: Same username as row index ${usernameDupes.get(v.index)}`);
   }
 
   // ── Class teacher section (optional) ────────────────────────
@@ -110,7 +118,7 @@ export const bulkCreateTeachers = async (schoolId: string, rows: unknown[], dryR
     const created = await prisma.$transaction(async (tx) => {
       const users = await tx.user.createManyAndReturn({
         data: valid.map(v => ({
-          name: v.data.name, email: v.data.email, phone: v.data.phone,
+          name: v.data.name, email: v.data.email, username: v.data.username ?? null, phone: v.data.phone,
           passwordHash, role: 'TEACHER' as const, schoolId,
         })),
       });
@@ -154,6 +162,7 @@ export const bulkCreateTeachers = async (schoolId: string, rows: unknown[], dryR
       const t = created.teacherByUser.get(created.userIdByEmail.get(v.data.email.toLowerCase())!)!;
       Object.assign(results[v.index], {
         status: 'created', id: t.id, userId: t.userId, employeeId: t.employeeId, name: v.data.name, email: v.data.email,
+        username: v.data.username ?? null,
       });
     }
 

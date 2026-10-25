@@ -25,6 +25,7 @@ import superAdminRoutes    from './features/superAdmin/superAdmin.routes';
 import mySchoolRoutes      from './features/admin/school/school.routes';
 import adminUserRoutes     from './features/admin/users/users.routes';
 import { supportRouter, superAdminSupportRouter } from './features/support/support.routes';
+import { subscriptionRouter, superAdminSubscriptionRouter } from './features/subscriptions/subscriptions.routes';
 import { adminCalendarRouter, teacherCalendarRouter, parentCalendarRouter } from './features/academicCalendar/academicCalendar.routes';
 
 // ── Middleware ────────────────────────────────────────────────
@@ -81,6 +82,8 @@ app.use('/api/students/academic-calendar', parentCalendarRouter);
 app.use('/api/support', supportRouter);
 app.use('/api/admin/support', supportRouter);
 app.use('/api/super-admin/support', superAdminSupportRouter);
+app.use('/api/subscription', subscriptionRouter);
+app.use('/api/super-admin/subscription', superAdminSubscriptionRouter);
 app.use('/api/super-admin', superAdminRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────

@@ -43,6 +43,7 @@ export interface UserPublic {
   id:         string;
   name:       string;
   email:      string;
+  username:   string | null;
   phone:      string | null;
   role:       Role;
   schoolId:   string | null;

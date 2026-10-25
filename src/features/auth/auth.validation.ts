@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { normalizePhone } from '../../shared/utils/phone';
+import { optionalUsernameField } from '../../shared/utils/username';
 
 export const signupSchema = z.object({
   schoolName: z.string().min(2, 'School name must be at least 2 characters').max(150),
@@ -15,6 +16,11 @@ export const loginSchema = z.object({
   password:   z.string().min(1, 'Password is required'),
   role:       z.nativeEnum(Role),
   schoolId:   z.string().uuid('Invalid school id').optional(),
+});
+
+// ADMIN / SUPER_ADMIN set or clear (null / "") their own username.
+export const updateUsernameSchema = z.object({
+  username: optionalUsernameField.refine(v => v !== undefined, 'username is required (send null to remove it)'),
 });
 
 export const refreshSchema = z.object({
@@ -66,6 +72,7 @@ export const verifyLoginOtpSchema = z.object({
 
 export type SignupSchema               = z.infer<typeof signupSchema>;
 export type LoginSchema                = z.infer<typeof loginSchema>;
+export type UpdateUsernameSchema       = z.infer<typeof updateUsernameSchema>;
 export type RefreshSchema              = z.infer<typeof refreshSchema>;
 export type LogoutSchema               = z.infer<typeof logoutSchema>;
 export type ResetPasswordSchema        = z.infer<typeof resetPasswordSchema>;

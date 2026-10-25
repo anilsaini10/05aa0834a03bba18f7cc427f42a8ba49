@@ -5,6 +5,7 @@ import { generateOtp } from '../../shared/utils/otp';
 import { sendMail } from '../../config/mailer';
 import { sendSms } from '../../config/sms';
 import { toE164, normalizePhone } from '../../shared/utils/phone';
+import { looksLikeUsername, assertUsernameAvailable } from '../../shared/utils/username';
 import { env } from '../../config/env';
 import { changeOwnPassword } from '../../shared/services/account.service';
 import {
@@ -24,6 +25,7 @@ const toPublic = (user: User, schoolName: string | null): UserPublic => ({
   id:         user.id,
   name:       user.name,
   email:      user.email,
+  username:   user.username,
   phone:      user.phone,
   role:       user.role,
   schoolId:   user.schoolId,
@@ -128,8 +130,9 @@ const assertSchoolScope = (role: Role, schoolId?: string): boolean => {
   return isSchoolScoped;
 };
 
-// ── `identifier` is an email or a mobile number. Emails match
-//    case-insensitively; a mobile number in any common format (+91…, 0…,
+// ── `identifier` is an email, a username or a mobile number. Emails
+//    match case-insensitively; usernames are stored lowercase and always
+//    start with a letter; a mobile number in any common format (+91…, 0…,
 //    spaces, dashes) is normalized to the stored 10-digit form, same as the
 //    OTP login. The raw value is also tried so phones saved before
 //    normalization existed still match. ────────────────────────────
@@ -137,6 +140,9 @@ const identifierMatchers = (identifier: string) => {
   const value = identifier.trim();
   if (value.includes('@')) {
     return [{ email: { equals: value, mode: 'insensitive' as const } }];
+  }
+  if (looksLikeUsername(value)) {
+    return [{ username: value.toLowerCase() }];
   }
   const phone = normalizePhone(value);
   return phone && phone !== value ? [{ phone }, { phone: value }] : [{ phone: value }];
@@ -391,6 +397,13 @@ export const refresh = async (
 // ── Logout ────────────────────────────────────────────────────
 export const logout = async (token: string): Promise<void> => {
   await prisma.refreshToken.deleteMany({ where: { token } });
+};
+
+// ── Set / clear own username (ADMIN, SUPER_ADMIN) ──────────────
+export const updateOwnUsername = async (userId: string, username: string | null) => {
+  await assertUsernameAvailable(username, userId);
+  const user = await prisma.user.update({ where: { id: userId }, data: { username }, include: { school: true } });
+  return toPublic(user, user.school?.name ?? null);
 };
 
 // ── Reset own password (ADMIN) ─────────────────────────────────

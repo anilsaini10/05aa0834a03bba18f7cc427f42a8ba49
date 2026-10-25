@@ -1,10 +1,13 @@
 import { z } from 'zod';
 import { Gender } from '@prisma/client';
 import { RECORD_STATUS_VALUES, RECORD_STATUS_FILTER_VALUES } from '../../../constants';
+import { optionalUsernameField } from '../../../shared/utils/username';
 
 export const createTeacherSchema = z.object({
   name:                  z.string().min(2, 'Name must be at least 2 characters').max(100),
   email:                 z.string().email('Invalid email address'),
+  // Optional login id — the teacher can then log in with it instead of email.
+  username:              optionalUsernameField,
   phone:                 z.string().min(10).max(15),
   gender:                z.nativeEnum(Gender),
   salary:                z.coerce.number().positive('Salary must be a positive number'),
@@ -23,6 +26,8 @@ export const createTeacherSchema = z.object({
 export const updateTeacherSchema = z.object({
   name:             z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
   email:            z.string().email('Invalid email address').optional(),
+  // null / "" removes it.
+  username:         optionalUsernameField,
   phone:            z.string().min(10).max(15).optional(),
   gender:           z.nativeEnum(Gender).optional(),
   joiningDate:      z.coerce.date({ errorMap: () => ({ message: 'Invalid joining date' }) }).optional(),
