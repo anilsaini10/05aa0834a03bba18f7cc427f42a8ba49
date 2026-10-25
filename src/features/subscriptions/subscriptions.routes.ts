@@ -14,6 +14,8 @@ subscriptionRouter.post('/subscribe',                                c.subscribe
 subscriptionRouter.get('/my-subscriptions',                          c.listMySubscriptionsHandler);
 subscriptionRouter.get('/my-subscriptions/:subscriptionId',          c.getMySubscriptionHandler);
 subscriptionRouter.post('/my-subscriptions/:subscriptionId/cancel',  c.cancelMySubscriptionHandler);
+subscriptionRouter.post('/my-subscriptions/:subscriptionId/razorpay-order',  c.createRazorpayOrderHandler);
+subscriptionRouter.post('/my-subscriptions/:subscriptionId/razorpay-verify', c.verifyRazorpayPaymentHandler);
 
 // ── SUPER_ADMIN ───────────────────────────────────────────────
 // Mounted at /api/super-admin/subscription.

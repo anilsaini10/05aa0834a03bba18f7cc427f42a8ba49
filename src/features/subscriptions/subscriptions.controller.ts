@@ -17,6 +17,7 @@ import {
   cancelSubscriptionSchema,
   subscribeSchema,
   listMySubscriptionsQuerySchema,
+  verifyRazorpayPaymentSchema,
 } from './subscriptions.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -40,6 +41,8 @@ export const subscribeHandler           = handle(req => subscriptionsService.sub
 export const listMySubscriptionsHandler = handle(req => subscriptionsService.listMySubscriptions(userOf(req), listMySubscriptionsQuerySchema.parse(req.query)));
 export const getMySubscriptionHandler   = handle(req => subscriptionsService.getMySubscription(userOf(req), req.params.subscriptionId));
 export const cancelMySubscriptionHandler = handle(req => subscriptionsService.cancelMyPendingSubscription(userOf(req), req.params.subscriptionId));
+export const createRazorpayOrderHandler   = handle(req => subscriptionsService.createRazorpayOrder(userOf(req), req.params.subscriptionId), 201);
+export const verifyRazorpayPaymentHandler = handle(req => subscriptionsService.verifyRazorpayPayment(userOf(req), req.params.subscriptionId, verifyRazorpayPaymentSchema.parse(req.body ?? {})));
 
 // ── SUPER_ADMIN: features ─────────────────────────────────────
 

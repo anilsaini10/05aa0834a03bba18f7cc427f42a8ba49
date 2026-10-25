@@ -17,6 +17,8 @@ const envSchema = z.object({
   GMAIL_USER:          z.string().optional(),
   GMAIL_APP_PASSWORD:  z.string().optional(),
   SMS_PROVIDER:        z.enum(['console']).default('console'),
+  RAZORPAY_KEY_ID:     z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

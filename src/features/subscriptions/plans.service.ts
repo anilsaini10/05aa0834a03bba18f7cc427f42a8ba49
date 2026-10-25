@@ -21,7 +21,7 @@ export const appError = (message: string, code: string, statusCode: number, deta
   return err;
 };
 
-const isUniqueViolation = (err: unknown) =>
+export const isUniqueViolation = (err: unknown) =>
   err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 
 const featureNotFound = () => appError('Feature not found', 'FEATURE_NOT_FOUND', 404);

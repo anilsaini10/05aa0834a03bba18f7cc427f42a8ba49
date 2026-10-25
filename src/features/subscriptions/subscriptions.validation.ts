@@ -139,6 +139,13 @@ export const subscribeSchema = z.object({
   planPriceId: z.string({ required_error: 'planPriceId is required' }).uuid('Invalid plan price id'),
 });
 
+// Fields Razorpay Checkout hands the app in its success handler.
+export const verifyRazorpayPaymentSchema = z.object({
+  razorpay_order_id:   z.string({ required_error: 'razorpay_order_id is required' }).trim().min(1, 'razorpay_order_id is required'),
+  razorpay_payment_id: z.string({ required_error: 'razorpay_payment_id is required' }).trim().min(1, 'razorpay_payment_id is required'),
+  razorpay_signature:  z.string({ required_error: 'razorpay_signature is required' }).trim().min(1, 'razorpay_signature is required'),
+});
+
 export const listMySubscriptionsQuerySchema = z.object({
   page:     z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(50).default(10),
@@ -158,4 +165,5 @@ export type ListAllSubscriptionsQuerySchema  = z.infer<typeof listAllSubscriptio
 export type ActivateSubscriptionSchema       = z.infer<typeof activateSubscriptionSchema>;
 export type CancelSubscriptionSchema         = z.infer<typeof cancelSubscriptionSchema>;
 export type SubscribeSchema                  = z.infer<typeof subscribeSchema>;
+export type VerifyRazorpayPaymentSchema      = z.infer<typeof verifyRazorpayPaymentSchema>;
 export type ListMySubscriptionsQuerySchema   = z.infer<typeof listMySubscriptionsQuerySchema>;

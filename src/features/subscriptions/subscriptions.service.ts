@@ -17,18 +17,23 @@ import {
   liveSubscriptionWhere,
   subscriptionStatusWhere,
 } from '../../shared/utils/subscriptionStatus';
-import { appError, PLAN_INCLUDE, PlanWithRefs, toPlanItem } from './plans.service';
+import { getRazorpay, getRazorpayKeyId, isValidCheckoutSignature, toGatewayError } from '../../config/razorpay';
+import { appError, isUniqueViolation, PLAN_INCLUDE, PlanWithRefs, toPlanItem } from './plans.service';
 import {
   ActivateSubscriptionSchema,
   CancelSubscriptionSchema,
   ListAllSubscriptionsQuerySchema,
   ListMySubscriptionsQuerySchema,
   SubscribeSchema,
+  VerifyRazorpayPaymentSchema,
 } from './subscriptions.validation';
 
 export interface RequestUser { sub: string; role: Role; schoolId: string | null }
 
 const DAY_MS = 86_400_000;
+
+// Razorpay rejects orders below ₹1.
+const RAZORPAY_MIN_AMOUNT = 100;
 
 const subscriptionNotFound = () => appError('Subscription not found', 'SUBSCRIPTION_NOT_FOUND', 404);
 
@@ -437,6 +442,130 @@ export const cancelMyPendingSubscription = async (user: RequestUser, subscriptio
 };
 
 // ════════════════════════════════════════════════════════════
+// Razorpay Standard Checkout — pay a PENDING subscription.
+// 1. app → razorpay-order → opens Checkout with the returned orderId
+// 2. Checkout success → app → razorpay-verify → subscription ACTIVE
+// ════════════════════════════════════════════════════════════
+
+// ── POST /subscription/my-subscriptions/:id/razorpay-order ────
+// Attaches a Razorpay order to the subscription's open payment. Calling
+// it again (retry, second tap) returns the same order, so the payment
+// row never points at an order the app isn't paying.
+export const createRazorpayOrder = async (user: RequestUser, subscriptionId: string) => {
+  const schoolId = requireSchool(user);
+  const s = await prisma.subscription.findFirst({
+    where:   { id: subscriptionId, ...ownedSubscriptionsWhere(user, schoolId) },
+    include: {
+      plan:       { select: { name: true } },
+      paidByUser: { select: { name: true, email: true, phone: true } },
+      payments:   { where: { status: 'CREATED' }, orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+  });
+  if (!s) throw subscriptionNotFound();
+  if (s.status !== 'PENDING') {
+    throw appError('Only a subscription awaiting payment can be paid', 'SUBSCRIPTION_NOT_PENDING', 409);
+  }
+  if (s.amount < RAZORPAY_MIN_AMOUNT) {
+    throw appError('Amount is below the minimum for online payment (₹1)', 'AMOUNT_TOO_LOW', 400);
+  }
+  const keyId = getRazorpayKeyId();
+
+  const payment = s.payments[0] ?? await prisma.payment.create({
+    data: { subscriptionId: s.id, userId: s.paidByUserId, schoolId: s.schoolId, amount: s.amount, currency: s.currency, status: 'CREATED' },
+  });
+
+  let orderId = payment.gatewayOrderId;
+  if (!orderId) {
+    const order = await getRazorpay().orders
+      .create({
+        amount:   payment.amount,
+        currency: payment.currency,
+        receipt:  payment.id,
+        notes:    { subscriptionId: s.id, paymentId: payment.id },
+      })
+      .catch(err => { throw toGatewayError(err); });
+
+    // Only the first concurrent request gets to store its order.
+    const claimed = await prisma.payment.updateMany({
+      where: { id: payment.id, gatewayOrderId: null },
+      data:  { gateway: 'RAZORPAY', gatewayOrderId: order.id },
+    });
+    orderId = claimed.count
+      ? order.id
+      : (await prisma.payment.findUniqueOrThrow({ where: { id: payment.id }, select: { gatewayOrderId: true } })).gatewayOrderId!;
+  }
+
+  return {
+    keyId,
+    orderId,
+    amount:         payment.amount,
+    currency:       payment.currency,
+    subscriptionId: s.id,
+    description:    s.plan.name,
+    prefill: {
+      name:    s.paidByUser.name,
+      email:   s.paidByUser.email,
+      contact: s.paidByUser.phone,
+    },
+  };
+};
+
+// ── POST /subscription/my-subscriptions/:id/razorpay-verify ───
+// Checks the Checkout signature, then activates the subscription.
+// Safe to retry: verifying the same payment again returns the result.
+export const verifyRazorpayPayment = async (user: RequestUser, subscriptionId: string, input: VerifyRazorpayPaymentSchema) => {
+  const schoolId = requireSchool(user);
+  const s = await prisma.subscription.findFirst({
+    where:  { id: subscriptionId, ...ownedSubscriptionsWhere(user, schoolId) },
+    select: { id: true, status: true },
+  });
+  if (!s) throw subscriptionNotFound();
+
+  if (!isValidCheckoutSignature(input.razorpay_order_id, input.razorpay_payment_id, input.razorpay_signature)) {
+    throw appError('Payment verification failed', 'INVALID_PAYMENT_SIGNATURE', 400);
+  }
+
+  const payment = await prisma.payment.findFirst({
+    where: { subscriptionId: s.id, gatewayOrderId: input.razorpay_order_id },
+  });
+  if (!payment) throw appError('This payment does not belong to this subscription', 'PAYMENT_ORDER_MISMATCH', 400);
+
+  const alreadyRecorded = async () => {
+    const current = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    if (current.gatewayPaymentId !== input.razorpay_payment_id) {
+      throw appError('A different payment is already recorded for this order', 'PAYMENT_ALREADY_RECORDED', 409);
+    }
+    return getMySubscription(user, s.id);
+  };
+  if (payment.status === 'SUCCESS') return alreadyRecorded();
+
+  const gateway = {
+    orderId:   input.razorpay_order_id,
+    paymentId: input.razorpay_payment_id,
+    raw:       { razorpay_order_id: input.razorpay_order_id, razorpay_payment_id: input.razorpay_payment_id },
+  };
+
+  // Paid an order after its checkout was replaced or cancelled: the money
+  // is real, so record it for a refund instead of dropping it.
+  if (s.status !== 'PENDING' && s.status !== 'FAILED') {
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data:  { status: 'SUCCESS', paidAt: new Date(), gatewayPaymentId: gateway.paymentId, rawResponse: gateway.raw },
+    });
+    throw appError('Payment received for a subscription that is no longer awaiting payment — contact support for a refund',
+      'SUBSCRIPTION_NOT_PENDING', 409, { paymentId: gateway.paymentId });
+  }
+
+  try {
+    return toSubscriptionItem(await activateSubscriptionRow(s.id, { gateway }));
+  } catch (err) {
+    // A concurrent verify of the same payment won the race.
+    if (isUniqueViolation(err)) return alreadyRecorded();
+    throw err;
+  }
+};
+
+// ════════════════════════════════════════════════════════════
 // Feature check used by the requireFeature middleware.
 // ════════════════════════════════════════════════════════════
 
@@ -527,15 +656,17 @@ export const getSubscriptionById = async (subscriptionId: string) => {
 // ── Activation ────────────────────────────────────────────────
 // Marks the payment received and starts the period. A renewal bought
 // while the same plan is still running starts when that one ends, so no
-// paid days are lost. Shared by the manual (super admin) path and, later,
-// the payment-gateway webhook.
-export const activateSubscription = async (
+// paid days are lost. Shared by the manual (super admin) path and
+// Razorpay verification (gateway set → only that order's payment is paid).
+interface GatewayConfirmation { orderId: string; paymentId: string; raw: Prisma.InputJsonValue }
+
+const activateSubscriptionRow = async (
   subscriptionId: string,
-  opts: ActivateSubscriptionSchema & { activatedBy?: string },
+  opts: ActivateSubscriptionSchema & { activatedBy?: string; gateway?: GatewayConfirmation },
 ) => {
   const now = new Date();
 
-  const updated = await prisma.$transaction(async tx => {
+  return prisma.$transaction(async tx => {
     const s = await tx.subscription.findUnique({ where: { id: subscriptionId } });
     if (!s) throw subscriptionNotFound();
     if (s.status !== 'PENDING' && s.status !== 'FAILED') {
@@ -558,16 +689,24 @@ export const activateSubscription = async (
     const startDate = running?.endDate ?? now;
     const endDate   = addInterval(startDate, s.intervalUnit, s.intervalCount);
 
+    const gatewayData = opts.gateway
+      ? { gateway: 'RAZORPAY' as const, gatewayOrderId: opts.gateway.orderId, gatewayPaymentId: opts.gateway.paymentId, rawResponse: opts.gateway.raw }
+      : {};
+
     const paid = await tx.payment.updateMany({
-      where: { subscriptionId: s.id, status: { in: ['CREATED', 'FAILED'] } },
-      data:  { status: 'SUCCESS', paidAt: now, reference: opts.reference ?? null },
+      where: {
+        subscriptionId: s.id,
+        status:         { in: ['CREATED', 'FAILED'] },
+        ...(opts.gateway ? { gatewayOrderId: opts.gateway.orderId } : {}),
+      },
+      data:  { status: 'SUCCESS', paidAt: now, reference: opts.reference ?? null, ...gatewayData },
     });
     if (!paid.count) {
       await tx.payment.create({
         data: {
           subscriptionId: s.id, userId: s.paidByUserId, schoolId: s.schoolId,
           amount: s.amount, currency: s.currency, status: 'SUCCESS', gateway: 'MANUAL',
-          reference: opts.reference ?? null, paidAt: now,
+          reference: opts.reference ?? null, paidAt: now, ...gatewayData,
         },
       });
     }
@@ -585,9 +724,12 @@ export const activateSubscription = async (
       include: SUB_INCLUDE,
     });
   });
-
-  return toSuperAdminSubscriptionItem(updated, now);
 };
+
+export const activateSubscription = async (
+  subscriptionId: string,
+  opts: ActivateSubscriptionSchema & { activatedBy?: string },
+) => toSuperAdminSubscriptionItem(await activateSubscriptionRow(subscriptionId, opts));
 
 // ── Cancel ────────────────────────────────────────────────────
 // Access stops immediately. No refund is recorded here.
