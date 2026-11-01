@@ -15,6 +15,9 @@ enum Role {
   ADMIN
   TEACHER
   PARENT
+  // Any role the super admin creates (Accountant, Librarian…). Which one
+  // is on User.customRoleId — see CustomRole.
+  STAFF
 }
 
 enum Platform {
@@ -125,11 +128,16 @@ model User {
   // Nullable ONLY for SUPER_ADMIN — enforced in app code + a DB CHECK
   // constraint (see migration), since a super admin isn't scoped to a school.
   schoolId     String?
+  // Set exactly when role = STAFF (DB CHECK constraint, see migration).
+  customRoleId String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   school                       School?                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  customRole                   CustomRole?               @relation("CustomRoleUsers", fields: [customRoleId], references: [id], onDelete: Restrict)
+  customRolesCreated           CustomRole[]              @relation("CustomRoleCreatedBy")
+  rolePermissionsUpdated       SchoolRolePermission[]    @relation("RolePermissionUpdatedBy")
   refreshTokens                RefreshToken[]
   loginOtps                    LoginOtp[]
   deviceTokens                 DeviceToken[]
@@ -162,7 +170,51 @@ model User {
   interventionsCreated         Intervention[]            @relation("InterventionCreatedBy")
 
   @@index([schoolId])
+  @@index([customRoleId])
   @@map("users")
+}
+
+// ── CustomRole — roles the super admin defines ─────────────────
+// Shared by every school. key is the normalized identifier
+// ("head clerk" → "HEAD_CLERK"): unique, uppercase and immutable, so apps
+// can route on it. name is the editable display label. A role with users
+// can't be deleted, only deactivated — deactivated roles are hidden from
+// school admins and their users can't log in.
+model CustomRole {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  name          String
+  description   String?
+  isActive      Boolean  @default(true)
+  createdBy     String?
+  createdByUser User?    @relation("CustomRoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users             User[]                 @relation("CustomRoleUsers")
+  schoolPermissions SchoolRolePermission[]
+
+  @@map("custom_roles")
+}
+
+// ── SchoolRolePermission — what a school's admin lets a role do ──
+// One row per (school, custom role); permissions has the same shape as
+// School.permissions. A key the school has set to false stays false for
+// every role in that school (see effectivePermissions).
+model SchoolRolePermission {
+  id            String     @id @default(uuid())
+  schoolId      String
+  school        School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  customRoleId  String
+  customRole    CustomRole @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
+  permissions   Json       @default("{}")
+  updatedBy     String?
+  updatedByUser User?      @relation("RolePermissionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([schoolId, customRoleId])
+  @@map("school_role_permissions")
 }
 
 // ── School ────────────────────────────────────────────────────
@@ -210,6 +262,11 @@ model School {
   classesTo                 String?
   academicSessionStartMonth Int?
 
+  // What the super admin allows this school — a flat JSON object with
+  // camelCase keys chosen by the UI (values: boolean / number / string /
+  // array of those). The backend stores it as-is; see features/permissions.
+  permissions Json @default("{}")
+
   createdAt DateTime @default(now())
 
   users                    User[]
@@ -231,6 +288,7 @@ model School {
   supportQueries           SupportQuery[]
   accountRecoveryRequests  AccountRecoveryRequest[]
   interventions            Intervention[]
+  rolePermissions          SchoolRolePermission[]
   subscriptionPlans        SubscriptionPlan[]
   subscriptions            Subscription[]
   payments                 Payment[]
@@ -1085,26 +1143,26 @@ model Feature {
 }
 
 model SubscriptionPlan {
-  id          String    @id @default(uuid())
-  code        String    @unique
-  name        String
-  description String?
-  scope       PlanScope @default(SELF)
-  planType    PlanType  @default(BASE)
+  id            String    @id @default(uuid())
+  code          String    @unique
+  name          String
+  description   String?
+  scope         PlanScope @default(SELF)
+  planType      PlanType  @default(BASE)
   // Roles that can see and buy it — always [ADMIN] for SCHOOL plans.
-  targetRoles Role[]
+  targetRoles   Role[]
   // null → offered to every school; set → only to this school.
-  schoolId    String?
-  school      School?   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  sortOrder   Int       @default(0)
-  isActive    Boolean   @default(true)
+  schoolId      String?
+  school        School?   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  sortOrder     Int       @default(0)
+  isActive      Boolean   @default(true)
   // Free trial window: inside it, everyone the plan is offered to gets its
   // features without paying. trialEndsAt is exclusive (00:00 IST the day
   // after the last trial day).
   trialStartsAt DateTime?
   trialEndsAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   features      PlanFeature[]
   prices        PlanPrice[]

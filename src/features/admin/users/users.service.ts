@@ -9,10 +9,11 @@ const notFound = (message: string, code: string) => {
   return err;
 };
 
-// Roles a school ADMIN may manage logins for. Other admins and the
-// super admin are deliberately excluded — admin passwords are reset by
-// the super admin (POST /super-admin/schools/:schoolId/admins/:adminId/reset-password).
-const ADMIN_MANAGED_ROLES: Role[] = ['TEACHER', 'PARENT'];
+// Roles a school ADMIN may manage logins for (STAFF = custom-role
+// accounts). Other admins and the super admin are deliberately excluded —
+// admin passwords are reset by the super admin
+// (POST /super-admin/schools/:schoolId/admins/:adminId/reset-password).
+const ADMIN_MANAGED_ROLES: Role[] = ['TEACHER', 'PARENT', 'STAFF'];
 
 // ── POST /admin/users/:userId/reset-password ──────────────────
 // One endpoint for every login the admin manages (teacher or parent).

@@ -20,25 +20,44 @@ import {
   SendLoginOtpInput, VerifyLoginOtpInput,
 } from './auth.types';
 
+type CustomRoleRef = { id: string; key: string; name: string; isActive: boolean };
+type SessionUser   = User & { customRole?: CustomRoleRef | null };
+
+// Load with every user that can start a session.
+const CUSTOM_ROLE_SELECT = { select: { id: true, key: true, name: true, isActive: true } } as const;
+
 // ── Helper — strip password ───────────────────────────────────
-const toPublic = (user: User, schoolName: string | null): UserPublic => ({
+const toPublic = (user: SessionUser, schoolName: string | null): UserPublic => ({
   id:         user.id,
   name:       user.name,
   email:      user.email,
   username:   user.username,
   phone:      user.phone,
   role:       user.role,
+  customRole: user.customRole ? { id: user.customRole.id, key: user.customRole.key, name: user.customRole.name } : null,
   schoolId:   user.schoolId,
   schoolName,
 });
 
 // ── Build JWT payload ─────────────────────────────────────────
-const buildPayload = (user: { id: string; email: string; role: any; schoolId: string | null }) => ({
-  sub:      user.id,
-  email:    user.email,
-  role:     user.role,
-  schoolId: user.schoolId,
+const buildPayload = (user: { id: string; email: string; role: any; schoolId: string | null; customRole?: { key: string } | null }) => ({
+  sub:        user.id,
+  email:      user.email,
+  role:       user.role,
+  schoolId:   user.schoolId,
+  customRole: user.customRole?.key ?? null,
 });
+
+// A STAFF account works only while its custom role is active — the super
+// admin deactivating a role locks out everyone who has it.
+const assertCustomRoleActive = (user: SessionUser) => {
+  if (user.role === 'STAFF' && !user.customRole?.isActive) {
+    const err = new Error('Your role has been disabled. Please contact your school admin.') as any;
+    err.code       = 'ROLE_INACTIVE';
+    err.statusCode = 403;
+    throw err;
+  }
+};
 
 // ── Build error helper ─────────────────────────────────────────
 const invalidCredentials = () => {
@@ -50,7 +69,7 @@ const invalidCredentials = () => {
 
 // ── Issue tokens + shape response for an authenticated user ────
 const issueSession = async (
-  user: User,
+  user: SessionUser,
   schoolName: string | null,
 ): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
 
@@ -162,7 +181,7 @@ export const login = async (
       ...(isSchoolScoped ? { schoolId } : {}),
       OR: identifierMatchers(identifier),
     },
-    include: { school: true },
+    include: { school: true, customRole: CUSTOM_ROLE_SELECT },
   });
 
   if (!user || !user.isActive) {
@@ -173,6 +192,7 @@ export const login = async (
   if (!valid) {
     throw invalidCredentials();
   }
+  assertCustomRoleActive(user);
 
   return issueSession(user, user.school?.name ?? null);
 };
@@ -220,7 +240,7 @@ const findOtpLoginUser = async ({ phone, role, schoolId }: SendLoginOtpInput) =>
       role,
       ...(isSchoolScoped ? { schoolId } : {}),
     },
-    include: { school: true },
+    include: { school: true, customRole: CUSTOM_ROLE_SELECT },
   });
 
   if (!user) {
@@ -235,6 +255,7 @@ const findOtpLoginUser = async ({ phone, role, schoolId }: SendLoginOtpInput) =>
       'ACCOUNT_INACTIVE', 403,
     );
   }
+  assertCustomRoleActive(user);
 
   return user;
 };
@@ -380,10 +401,13 @@ export const refresh = async (
   // Check DB
   const stored = await prisma.refreshToken.findUnique({
     where: { token },
-    include: { user: true },
+    include: { user: { include: { customRole: CUSTOM_ROLE_SELECT } } },
   });
 
-  if (!stored || stored.expiresAt < new Date() || !stored.user.isActive) {
+  if (
+    !stored || stored.expiresAt < new Date() || !stored.user.isActive ||
+    (stored.user.role === 'STAFF' && !stored.user.customRole?.isActive)
+  ) {
     const err = new Error('Invalid or expired refresh token') as any;
     err.code       = 'INVALID_REFRESH_TOKEN';
     err.statusCode = 401;
@@ -402,7 +426,7 @@ export const logout = async (token: string): Promise<void> => {
 // ── Set / clear own username (ADMIN, SUPER_ADMIN) ──────────────
 export const updateOwnUsername = async (userId: string, username: string | null) => {
   await assertUsernameAvailable(username, userId);
-  const user = await prisma.user.update({ where: { id: userId }, data: { username }, include: { school: true } });
+  const user = await prisma.user.update({ where: { id: userId }, data: { username }, include: { school: true, customRole: CUSTOM_ROLE_SELECT } });
   return toPublic(user, user.school?.name ?? null);
 };
 

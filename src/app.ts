@@ -26,6 +26,8 @@ import mySchoolRoutes      from './features/admin/school/school.routes';
 import adminUserRoutes     from './features/admin/users/users.routes';
 import analyticsRoutes     from './features/admin/analytics/analytics.routes';
 import interventionRoutes  from './features/admin/interventions/interventions.routes';
+import { superAdminRolesRouter, adminRolesRouter, adminRoleUsersRouter } from './features/customRoles/customRoles.routes';
+import { superAdminSchoolPermissionsRouter, adminPermissionsRouter, myPermissionsRouter } from './features/permissions/permissions.routes';
 import { supportRouter, superAdminSupportRouter } from './features/support/support.routes';
 import { subscriptionRouter, superAdminSubscriptionRouter } from './features/subscriptions/subscriptions.routes';
 import { accountRecoveryRouter, adminAccountRecoveryRouter } from './features/accountRecovery/accountRecovery.routes';
@@ -59,6 +61,7 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // ── API Routes ────────────────────────────────────────────────
+app.use('/api/auth/permissions', myPermissionsRouter);
 app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/schools', schoolRoutes);
@@ -79,6 +82,9 @@ app.use('/api/admin/staff', staffRoutes);
 app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/admin/interventions', interventionRoutes);
+app.use('/api/admin/roles', adminRolesRouter);
+app.use('/api/admin/role-users', adminRoleUsersRouter);
+app.use('/api/admin/permissions', adminPermissionsRouter);
 app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
 app.use('/api/admin/academic-calendar', adminCalendarRouter);
@@ -91,6 +97,8 @@ app.use('/api/account-recovery', accountRecoveryRouter);
 app.use('/api/admin/account-recovery', adminAccountRecoveryRouter);
 app.use('/api/subscription', subscriptionRouter);
 app.use('/api/super-admin/subscription', superAdminSubscriptionRouter);
+app.use('/api/super-admin/roles', superAdminRolesRouter);
+app.use('/api/super-admin/schools/:schoolId', superAdminSchoolPermissionsRouter);
 app.use('/api/super-admin', superAdminRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────

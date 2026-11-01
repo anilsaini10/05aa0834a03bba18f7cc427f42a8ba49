@@ -14,7 +14,7 @@ const notFound = () => appError('Recovery request not found', 'RECOVERY_REQUEST_
 
 // Same roles a school ADMIN may reset (see admin/users). Admins who are
 // locked out go to the super admin instead.
-const RECOVERABLE_ROLES: Role[] = ['TEACHER', 'PARENT'];
+const RECOVERABLE_ROLES: Role[] = ['TEACHER', 'PARENT', 'STAFF'];
 
 // ── Response shape ────────────────────────────────────────────
 const REQUEST_INCLUDE = {
