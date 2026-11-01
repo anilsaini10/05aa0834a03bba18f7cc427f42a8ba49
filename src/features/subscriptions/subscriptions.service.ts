@@ -3,6 +3,7 @@ import { prisma } from '../../config/db';
 import {
   FEATURE_ACCESS_STATUS,
   FEATURE_LOCK_REASON,
+  PLAN_TRIAL_STATUS,
   SUBSCRIPTION_EXPIRING_SOON_DAYS,
   SUBSCRIPTION_LIVE_STATUSES,
   SUBSCRIPTION_STATUS,
@@ -10,6 +11,7 @@ import {
   FeatureLockReason,
 } from '../../constants';
 import {
+  activeTrialWhere,
   addInterval,
   computeSubscriptionStatus,
   daysLeft,
@@ -52,6 +54,17 @@ const reachableSubscriptionsWhere = (user: RequestUser, schoolId: string): Prism
   OR: [
     { subscriberType: 'USER',   userId: user.sub },
     { subscriberType: 'SCHOOL', schoolId },
+  ],
+});
+
+// Plans whose free trial reaches this user: offered to their school, and
+// either a SCHOOL plan (covers every role) or a SELF plan for their role.
+const trialPlansWhere = (user: RequestUser, schoolId: string): Prisma.SubscriptionPlanWhereInput => ({
+  isActive:      true,
+  trialStartsAt: { not: null },
+  AND: [
+    { OR: [{ schoolId: null }, { schoolId }] },
+    { OR: [{ scope: 'SCHOOL' }, { targetRoles: { has: user.role } }] },
   ],
 });
 
@@ -121,23 +134,39 @@ const toSuperAdminSubscriptionItem = (s: SubWithRefs, now = new Date()) => ({
 });
 
 // ════════════════════════════════════════════════════════════
-// Access context — every ACTIVE/PENDING subscription that can reach the
-// user, with the plan features it gives the user's role.
+// Access context — every ACTIVE/PENDING subscription and every started
+// plan trial that can reach the user, with the plan features it gives
+// the user's role.
 // ════════════════════════════════════════════════════════════
 
 const loadAccessContext = async (user: RequestUser, schoolId: string, now: Date) => {
-  const subs = await prisma.subscription.findMany({
-    where: { status: { in: ['ACTIVE', 'PENDING'] }, ...reachableSubscriptionsWhere(user, schoolId) },
-    include: {
-      plan: {
-        select: {
-          id: true, code: true, name: true, scope: true, planType: true,
-          features: { where: { role: user.role }, select: { featureId: true } },
+  const [subs, trialPlans] = await Promise.all([
+    prisma.subscription.findMany({
+      where: { status: { in: ['ACTIVE', 'PENDING'] }, ...reachableSubscriptionsWhere(user, schoolId) },
+      include: {
+        plan: {
+          select: {
+            id: true, code: true, name: true, scope: true, planType: true,
+            features: { where: { role: user.role }, select: { featureId: true } },
+          },
         },
       },
-    },
-    orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
-  });
+      orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
+    }),
+    prisma.subscriptionPlan.findMany({
+      where:  { ...trialPlansWhere(user, schoolId), trialStartsAt: { lte: now } },
+      select: {
+        id: true, code: true, name: true, scope: true, planType: true, trialStartsAt: true, trialEndsAt: true,
+        features: { where: { role: user.role }, select: { featureId: true } },
+      },
+    }),
+  ]);
+
+  const trials = trialPlans.map(t => ({
+    ...t,
+    active:     t.trialEndsAt! > now,
+    featureIds: new Set(t.features.map(f => f.featureId)),
+  }));
 
   const withStatus = subs.map(s => ({
     ...s,
@@ -149,24 +178,34 @@ const loadAccessContext = async (user: RequestUser, schoolId: string, now: Date)
   const covering = (featureId: string) => withStatus.filter(s => s.featureIds.has(featureId));
   const isLive   = (s: Sub) => SUBSCRIPTION_LIVE_STATUSES.includes(s.computed);
 
-  // Until when the feature stays unlocked: the latest live end date,
-  // extended by already-paid renewals that start before it runs out.
+  // Until when the feature stays unlocked: the latest live end date or
+  // trial end, extended by already-paid renewals that start before it
+  // runs out (e.g. a plan paid for during its trial).
   const accessFor = (featureId: string) => {
     const subsForFeature = covering(featureId);
-    const live = subsForFeature.filter(isLive);
-    if (!live.length) {
+    const live           = subsForFeature.filter(isLive);
+    const trialsFor      = trials.filter(t => t.featureIds.has(featureId));
+    const activeTrials   = trialsFor.filter(t => t.active);
+    if (!live.length && !activeTrials.length) {
       const reason: FeatureLockReason =
         subsForFeature.some(s => s.computed === SUBSCRIPTION_STATUS.PENDING_PAYMENT) ? FEATURE_LOCK_REASON.PENDING_PAYMENT
         : subsForFeature.some(s => s.computed === SUBSCRIPTION_STATUS.EXPIRED)       ? FEATURE_LOCK_REASON.EXPIRED
+        : trialsFor.length                                                           ? FEATURE_LOCK_REASON.TRIAL_ENDED
         : FEATURE_LOCK_REASON.NEVER_SUBSCRIBED;
       return { live: false as const, reason };
     }
 
-    let until = new Date(Math.max(...live.map(s => s.endDate!.getTime())));
+    let until = new Date(Math.max(
+      ...live.map(s => s.endDate!.getTime()),
+      ...activeTrials.map(t => t.trialEndsAt!.getTime()),
+    ));
     for (const u of subsForFeature.filter(s => s.computed === SUBSCRIPTION_STATUS.UPCOMING)) {
       if (u.startDate! <= until && u.endDate! > until) until = u.endDate!;
     }
-    const sources = [...new Set(live.map(s => (s.subscriberType === 'SCHOOL' ? 'SCHOOL' : 'SELF')))];
+    const sources: ('SELF' | 'SCHOOL' | 'TRIAL')[] = [
+      ...new Set(live.map(s => (s.subscriberType === 'SCHOOL' ? 'SCHOOL' as const : 'SELF' as const))),
+      ...(activeTrials.length ? ['TRIAL' as const] : []),
+    ];
     return { live: true as const, until, sources };
   };
 
@@ -175,7 +214,7 @@ const loadAccessContext = async (user: RequestUser, schoolId: string, now: Date)
     return a.live && a.sources.includes('SCHOOL');
   };
 
-  return { subs: withStatus, accessFor, coveredBySchool };
+  return { subs: withStatus, trials, accessFor, coveredBySchool };
 };
 
 // Plans this user may buy: active, for their role, offered to their
@@ -183,9 +222,9 @@ const loadAccessContext = async (user: RequestUser, schoolId: string, now: Date)
 const purchasablePlans = (user: RequestUser, schoolId: string) =>
   prisma.subscriptionPlan.findMany({
     where: {
-      isActive:   true,
-      targetRole: user.role,
-      OR:         [{ schoolId: null }, { schoolId }],
+      isActive:    true,
+      targetRoles: { has: user.role },
+      OR:          [{ schoolId: null }, { schoolId }],
       prices:     { some: { isActive: true } },
     },
     include: {
@@ -218,12 +257,29 @@ export const getEntitlements = async (user: RequestUser) => {
     purchasablePlans(user, schoolId),
   ]);
 
+  // Plans the user can pay for to keep / unlock a feature.
+  const availableIn = (featureId: string) => plans
+    .filter(p => p.features.some(pf => pf.featureId === featureId && pf.role === user.role))
+    .map(p => ({ planId: p.id, code: p.code, name: p.name, planType: p.planType, startingFrom: minPrice(p) }));
+
   const items = features.map(f => {
     const base = { featureId: f.id, key: f.key, name: f.name, description: f.description };
     if (!f.isPaid) return { ...base, status: FEATURE_ACCESS_STATUS.FREE, hasAccess: true };
 
     const access = ctx.accessFor(f.id);
     if (access.live) {
+      // Only a trial unlocks it → the app keeps offering the plans.
+      if (access.sources.every(s => s === 'TRIAL')) {
+        return {
+          ...base,
+          status:      FEATURE_ACCESS_STATUS.TRIAL,
+          hasAccess:   true,
+          sources:     access.sources,
+          expiresAt:   access.until,
+          daysLeft:    daysLeft(access.until, now),
+          availableIn: availableIn(f.id),
+        };
+      }
       const expiringSoon = access.until.getTime() - now.getTime() <= SUBSCRIPTION_EXPIRING_SOON_DAYS * DAY_MS;
       return {
         ...base,
@@ -239,15 +295,22 @@ export const getEntitlements = async (user: RequestUser) => {
       status:      FEATURE_ACCESS_STATUS.PAYMENT_REQUIRED,
       hasAccess:   false,
       reason:      access.reason,
-      availableIn: plans
-        .filter(p => p.features.some(pf => pf.featureId === f.id && pf.role === user.role))
-        .map(p => ({ planId: p.id, code: p.code, name: p.name, planType: p.planType, startingFrom: minPrice(p) })),
+      availableIn: availableIn(f.id),
     };
   });
 
   return {
     role:     user.role,
     features: items,
+    // Plan trials running for this user right now.
+    trials: ctx.trials
+      .filter(t => t.active)
+      .map(t => ({
+        plan:     { id: t.id, code: t.code, name: t.name, scope: t.scope, planType: t.planType },
+        startsAt: t.trialStartsAt,
+        endsAt:   t.trialEndsAt,
+        daysLeft: daysLeft(t.trialEndsAt, now),
+      })),
     // Paid/pending subscriptions that currently matter to this user.
     subscriptions: ctx.subs
       .filter(s => s.computed !== SUBSCRIPTION_STATUS.EXPIRED)
@@ -278,7 +341,7 @@ export const listAvailablePlans = async (user: RequestUser) => {
     : s.computed === SUBSCRIPTION_STATUS.UPCOMING ? 2 : 3;
 
   return plans.map(p => {
-    const item = toPlanItem(p);
+    const item = toPlanItem(p, now);
     const subscriberType = p.scope === 'SCHOOL' ? 'SCHOOL' : 'USER';
 
     const mine = ctx.subs
@@ -303,6 +366,9 @@ export const listAvailablePlans = async (user: RequestUser) => {
       ...item,
       features,
       startingFrom:    minPrice(p),
+      // The plan's trial is running: its features are unlocked for free
+      // until trial.endsAt. Paying now starts the paid period after it.
+      onTrial:         item.trial?.status === PLAN_TRIAL_STATUS.ACTIVE,
       coveredBySchool,
       canSubscribe:    !coveredBySchool,
       // SUBSCRIBE (never had it), RENEW (live → new period starts after
@@ -344,7 +410,7 @@ export const subscribe = async (user: RequestUser, input: SubscribeSchema) => {
     throw appError('This plan is not available', 'PLAN_NOT_AVAILABLE', 404);
   }
   const plan = price.plan;
-  if (plan.targetRole !== user.role || (plan.schoolId && plan.schoolId !== schoolId)) {
+  if (!plan.targetRoles.includes(user.role) || (plan.schoolId && plan.schoolId !== schoolId)) {
     throw appError('This plan is not available for your account', 'PLAN_NOT_AVAILABLE', 403);
   }
 
@@ -585,17 +651,27 @@ export const checkFeatureAccess = async (user: RequestUser, featureKey: string):
     plan: { features: { some: { featureId: feature.id, role: user.role } } },
   };
 
-  const live = await prisma.subscription.findFirst({ where: { ...base, ...liveSubscriptionWhere(now) }, select: { id: true } });
-  if (live) return { allowed: true };
+  const trialBase: Prisma.SubscriptionPlanWhereInput = {
+    ...trialPlansWhere(user, schoolId),
+    features: { some: { featureId: feature.id, role: user.role } },
+  };
 
-  const [pending, expired] = await Promise.all([
+  const [live, trial] = await Promise.all([
+    prisma.subscription.findFirst({ where: { ...base, ...liveSubscriptionWhere(now) }, select: { id: true } }),
+    prisma.subscriptionPlan.findFirst({ where: { ...trialBase, ...activeTrialWhere(now) }, select: { id: true } }),
+  ]);
+  if (live || trial) return { allowed: true };
+
+  const [pending, expired, trialEnded] = await Promise.all([
     prisma.subscription.findFirst({ where: { ...base, status: 'PENDING' }, select: { id: true } }),
     prisma.subscription.findFirst({ where: { ...base, status: 'ACTIVE', endDate: { lte: now } }, select: { id: true } }),
+    prisma.subscriptionPlan.findFirst({ where: { ...trialBase, trialEndsAt: { lte: now } }, select: { id: true } }),
   ]);
   return {
     allowed: false,
     reason: pending ? FEATURE_LOCK_REASON.PENDING_PAYMENT
       : expired ? FEATURE_LOCK_REASON.EXPIRED
+      : trialEnded ? FEATURE_LOCK_REASON.TRIAL_ENDED
       : FEATURE_LOCK_REASON.NEVER_SUBSCRIBED,
   };
 };
@@ -667,7 +743,10 @@ const activateSubscriptionRow = async (
   const now = new Date();
 
   return prisma.$transaction(async tx => {
-    const s = await tx.subscription.findUnique({ where: { id: subscriptionId } });
+    const s = await tx.subscription.findUnique({
+      where:   { id: subscriptionId },
+      include: { plan: { select: { trialStartsAt: true, trialEndsAt: true } } },
+    });
     if (!s) throw subscriptionNotFound();
     if (s.status !== 'PENDING' && s.status !== 'FAILED') {
       throw appError(`Subscription is already ${computeSubscriptionStatus(s, now)}`, 'SUBSCRIPTION_NOT_PENDING', 409);
@@ -686,7 +765,11 @@ const activateSubscriptionRow = async (
       select:  { endDate: true },
     });
 
-    const startDate = running?.endDate ?? now;
+    // Paying during the plan's trial doesn't cut the trial short — the
+    // paid period starts when the trial ends.
+    const { trialStartsAt, trialEndsAt } = s.plan;
+    const trialEnd  = trialStartsAt && trialEndsAt && trialStartsAt <= now && trialEndsAt > now ? trialEndsAt : null;
+    const startDate = new Date(Math.max(now.getTime(), running?.endDate?.getTime() ?? 0, trialEnd?.getTime() ?? 0));
     const endDate   = addInterval(startDate, s.intervalUnit, s.intervalCount);
 
     const gatewayData = opts.gateway

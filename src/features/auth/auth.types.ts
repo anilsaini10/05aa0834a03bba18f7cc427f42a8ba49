@@ -46,6 +46,8 @@ export interface UserPublic {
   username:   string | null;
   phone:      string | null;
   role:       Role;
+  // Set when role is STAFF — the super-admin-defined role.
+  customRole: { id: string; key: string; name: string } | null;
   schoolId:   string | null;
   schoolName: string | null;
 }

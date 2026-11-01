@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IntervalUnit, PlanScope, PlanType, SubscriberType } from '@prisma/client';
+import { IntervalUnit, PlanScope, PlanType, Role, SubscriberType } from '@prisma/client';
 import { SUBSCRIBER_ROLES, SUBSCRIPTION_STATUS_VALUES } from '../../constants';
 
 const role = z.enum(SUBSCRIBER_ROLES, {
@@ -37,8 +37,8 @@ export const listFeaturesQuerySchema = z.object({
 // SUPER_ADMIN — plans, plan features, prices
 // ════════════════════════════════════════════════════════════
 
-// role omitted → SELF plan: the plan's targetRole; SCHOOL plan: every
-// role the feature applies to.
+// role omitted → SELF plan: every targetRole the feature applies to;
+// SCHOOL plan: every role the feature applies to.
 const planFeatureInput = z.object({
   featureId: z.string().uuid('Invalid feature id'),
   role:      role.optional(),
@@ -54,6 +54,30 @@ export const priceInputSchema = z.object({
   isActive:      z.boolean().default(true),
 });
 
+const dateOnly = (label: string) => z.string({ required_error: `${label} is required` })
+  .regex(/^\d{4}-\d{2}-\d{2}$/, `${label} must be in YYYY-MM-DD format`)
+  .refine(v => !Number.isNaN(Date.parse(`${v}T00:00:00.000Z`)), `${label} is not a valid date`);
+
+// Free trial: both days inclusive, school calendar days (IST).
+const trialInput = z.object({
+  startDate: dateOnly('trial.startDate'),
+  endDate:   dateOnly('trial.endDate'),
+}).refine(t => t.endDate >= t.startDate, { message: 'trial.endDate must be on or after trial.startDate', path: ['endDate'] });
+
+// Multi-select roles. `targetRole` (one role) is still accepted from
+// older clients; targetRoles wins when both are sent.
+const planRoleFields = {
+  targetRoles: z.array(role).min(1, 'Pick at least one role').optional(),
+  targetRole:  role.optional(),
+};
+
+const mergeTargetRoles = <T extends { targetRoles?: Role[]; targetRole?: Role }>({ targetRole, ...rest }: T) => ({
+  ...rest,
+  targetRoles: rest.targetRoles ? [...new Set(rest.targetRoles)] : targetRole ? [targetRole] : undefined,
+});
+
+const isSchoolBuyer = (roles: Role[]) => roles.length === 1 && roles[0] === 'ADMIN';
+
 export const createPlanSchema = z.object({
   code:        z.string({ required_error: 'code is required' }).trim().toUpperCase()
                  .regex(/^[A-Z0-9_]{2,40}$/, 'code must be 2-40 chars: letters, digits, underscore'),
@@ -61,26 +85,41 @@ export const createPlanSchema = z.object({
   description: z.string().trim().max(1000).nullable().optional(),
   scope:       z.nativeEnum(PlanScope).default('SELF'),
   planType:    z.nativeEnum(PlanType).default('BASE'),
-  targetRole:  role,
+  ...planRoleFields,
   schoolId:    z.string().uuid('Invalid school id').nullable().optional(),
   sortOrder:   z.number().int().default(0),
   isActive:    z.boolean().default(true),
+  trial:       trialInput.nullable().optional(),
   features:    z.array(planFeatureInput).default([]),
   prices:      z.array(priceInputSchema).default([]),
-}).refine(p => p.scope !== 'SCHOOL' || p.targetRole === 'ADMIN', {
-  message: 'A SCHOOL plan is bought by the school ADMIN — targetRole must be ADMIN', path: ['targetRole'],
-});
+})
+  .transform(mergeTargetRoles)
+  .transform((p, ctx) => {
+    if (!p.targetRoles) {
+      ctx.addIssue({ code: 'custom', message: 'targetRoles is required', path: ['targetRoles'] });
+      return z.NEVER;
+    }
+    if (p.scope === 'SCHOOL' && !isSchoolBuyer(p.targetRoles)) {
+      ctx.addIssue({ code: 'custom', message: 'A SCHOOL plan is bought by the school ADMIN — targetRoles must be [ADMIN]', path: ['targetRoles'] });
+      return z.NEVER;
+    }
+    return { ...p, targetRoles: p.targetRoles };
+  });
 
 export const updatePlanSchema = z.object({
   name:        z.string().trim().min(1).max(100).optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   scope:       z.nativeEnum(PlanScope).optional(),
   planType:    z.nativeEnum(PlanType).optional(),
-  targetRole:  role.optional(),
+  ...planRoleFields,
   schoolId:    z.string().uuid('Invalid school id').nullable().optional(),
   sortOrder:   z.number().int().optional(),
   isActive:    z.boolean().optional(),
-}).refine(d => Object.keys(d).length > 0, { message: 'Nothing to update' });
+  // null removes the trial.
+  trial:       trialInput.nullable().optional(),
+})
+  .refine(d => Object.keys(d).length > 0, { message: 'Nothing to update' })
+  .transform(mergeTargetRoles);
 
 export const listPlansQuerySchema = z.object({
   role:     role.optional(),

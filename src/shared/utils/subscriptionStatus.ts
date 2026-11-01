@@ -1,11 +1,17 @@
 import { IntervalUnit, Prisma, SubscriptionStatus } from '@prisma/client';
 import {
+  PLAN_TRIAL_STATUS,
+  PlanTrialStatus,
+  SCHOOL_TIMEZONE,
   SUBSCRIPTION_STATUS,
   SUBSCRIPTION_EXPIRING_SOON_DAYS,
   SubscriptionComputedStatus,
 } from '../../constants';
 
 const DAY_MS = 86_400_000;
+
+// SCHOOL_TIMEZONE is IST, which has no DST — a fixed offset is exact.
+const SCHOOL_TZ_OFFSET_MS = 330 * 60_000;
 
 interface StatusFields {
   status:    SubscriptionStatus;
@@ -76,3 +82,27 @@ export const durationLabel = (unit: IntervalUnit, count: number): string => {
 
 export const daysLeft = (endDate: Date | null, now = new Date()): number | null =>
   endDate ? Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / DAY_MS)) : null;
+
+// ── Plan free trial ───────────────────────────────────────────
+// Trial dates are school calendar days: the trial runs from 00:00 IST on
+// the first day until 00:00 IST the day after the last (exclusive end).
+export const schoolDayStart = (day: string): Date =>
+  new Date(Date.parse(`${day}T00:00:00.000Z`) - SCHOOL_TZ_OFFSET_MS);
+
+export const toSchoolDay = (d: Date): string =>
+  d.toLocaleDateString('en-CA', { timeZone: SCHOOL_TIMEZONE });   // YYYY-MM-DD
+
+export const trialWindow = (startDay: string, endDay: string) => ({
+  trialStartsAt: schoolDayStart(startDay),
+  trialEndsAt:   new Date(schoolDayStart(endDay).getTime() + DAY_MS),
+});
+
+export const trialStatus = (startsAt: Date, endsAt: Date, now = new Date()): PlanTrialStatus =>
+  now < startsAt ? PLAN_TRIAL_STATUS.SCHEDULED
+  : now >= endsAt ? PLAN_TRIAL_STATUS.ENDED
+  : PLAN_TRIAL_STATUS.ACTIVE;
+
+// Plans whose trial is running right now.
+export const activeTrialWhere = (now = new Date()): Prisma.SubscriptionPlanWhereInput => ({
+  trialStartsAt: { lte: now }, trialEndsAt: { gt: now },
+});

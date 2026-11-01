@@ -7,6 +7,8 @@ export interface JwtPayload {
   email:    string;
   role:     Role;
   schoolId: string | null;  // null only for SUPER_ADMIN
+  // Custom role key (e.g. "ACCOUNTANT") when role is STAFF, else null.
+  customRole?: string | null;
   iat?:     number;
   exp?:     number;
 }

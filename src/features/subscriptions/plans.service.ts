@@ -1,6 +1,14 @@
 import { Prisma, PlanScope, Role } from '@prisma/client';
 import { prisma } from '../../config/db';
-import { durationLabel, liveSubscriptionWhere } from '../../shared/utils/subscriptionStatus';
+import { PLAN_TRIAL_STATUS } from '../../constants';
+import {
+  daysLeft,
+  durationLabel,
+  liveSubscriptionWhere,
+  toSchoolDay,
+  trialStatus,
+  trialWindow,
+} from '../../shared/utils/subscriptionStatus';
 import {
   CreateFeatureSchema,
   UpdateFeatureSchema,
@@ -49,17 +57,36 @@ export const toPriceItem = (p: PriceRow) => ({
   isActive:      p.isActive,
 });
 
-export const toPlanItem = (p: PlanWithRefs) => ({
+// null when the plan has no trial. startDate/endDate are the inclusive
+// school days the super admin picked.
+export const toTrialItem = (
+  p: { trialStartsAt: Date | null; trialEndsAt: Date | null },
+  now = new Date(),
+) => {
+  if (!p.trialStartsAt || !p.trialEndsAt) return null;
+  const status = trialStatus(p.trialStartsAt, p.trialEndsAt, now);
+  return {
+    startDate: toSchoolDay(p.trialStartsAt),
+    endDate:   toSchoolDay(new Date(p.trialEndsAt.getTime() - 1)),
+    startsAt:  p.trialStartsAt,
+    endsAt:    p.trialEndsAt,
+    status,
+    daysLeft:  status === PLAN_TRIAL_STATUS.ACTIVE ? daysLeft(p.trialEndsAt, now) : null,
+  };
+};
+
+export const toPlanItem = (p: PlanWithRefs, now = new Date()) => ({
   id:          p.id,
   code:        p.code,
   name:        p.name,
   description: p.description,
   scope:       p.scope,
   planType:    p.planType,
-  targetRole:  p.targetRole,
+  targetRoles: p.targetRoles,
   school:      p.school,
   sortOrder:   p.sortOrder,
   isActive:    p.isActive,
+  trial:       toTrialItem(p, now),
   features: p.features.map(pf => ({
     planFeatureId: pf.id,
     featureId:     pf.featureId,
@@ -168,7 +195,7 @@ export const deleteFeature = async (featureId: string) => {
 // Turns { featureId, role? } inputs into concrete plan_features rows,
 // checking every feature exists and applies to the role it's given for.
 const resolvePlanFeatures = async (
-  plan: { scope: PlanScope; targetRole: Role },
+  plan: { scope: PlanScope; targetRoles: Role[] },
   inputs: PlanFeatureInput[],
 ): Promise<{ featureId: string; role: Role }[]> => {
   if (!inputs.length) return [];
@@ -185,11 +212,17 @@ const resolvePlanFeatures = async (
     const feature = byId.get(input.featureId)!;
     const roles: Role[] = input.role
       ? [input.role]
-      : plan.scope === 'SELF' ? [plan.targetRole] : feature.roles;
+      : plan.scope === 'SELF' ? feature.roles.filter(r => plan.targetRoles.includes(r)) : feature.roles;
+
+    if (!roles.length) {
+      throw appError(`Feature "${feature.key}" applies to none of this plan's roles`, 'FEATURE_ROLE_MISMATCH', 400, {
+        featureKey: feature.key, featureRoles: feature.roles, targetRoles: plan.targetRoles,
+      });
+    }
 
     for (const role of roles) {
-      if (plan.scope === 'SELF' && role !== plan.targetRole) {
-        throw appError(`A SELF plan for ${plan.targetRole} can only give features to ${plan.targetRole}`, 'FEATURE_ROLE_MISMATCH', 400, {
+      if (plan.scope === 'SELF' && !plan.targetRoles.includes(role)) {
+        throw appError(`This SELF plan can only give features to ${plan.targetRoles.join(', ')}`, 'FEATURE_ROLE_MISMATCH', 400, {
           featureKey: feature.key, role,
         });
       }
@@ -243,7 +276,7 @@ const planResponse = async (planId: string) => {
 export const listPlans = async (query: ListPlansQuerySchema) => {
   const plans = await prisma.subscriptionPlan.findMany({
     where: {
-      ...(query.role     ? { targetRole: query.role }   : {}),
+      ...(query.role     ? { targetRoles: { has: query.role } } : {}),
       ...(query.scope    ? { scope: query.scope }       : {}),
       ...(query.planType ? { planType: query.planType } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
@@ -256,7 +289,7 @@ export const listPlans = async (query: ListPlansQuerySchema) => {
       } : {}),
     },
     include: PLAN_INCLUDE,
-    orderBy: [{ targetRole: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
   });
   const counts = await subscriptionCounts(plans.map(p => p.id));
   return plans.map(p => toSuperAdminPlanItem(p, counts.get(p.id)));
@@ -281,10 +314,11 @@ export const createPlan = async (input: CreatePlanSchema) => {
         description: input.description ?? null,
         scope:       input.scope,
         planType:    input.planType,
-        targetRole:  input.targetRole,
+        targetRoles: input.targetRoles,
         schoolId:    input.schoolId ?? null,
         sortOrder:   input.sortOrder,
         isActive:    input.isActive,
+        ...(input.trial ? trialWindow(input.trial.startDate, input.trial.endDate) : {}),
         features:    { create: featureRows },
         prices:      { create: input.prices.map(p => ({ ...p, label: p.label ?? null })) },
       },
@@ -300,23 +334,33 @@ export const updatePlan = async (planId: string, input: UpdatePlanSchema) => {
   const existing = await loadPlan(planId);
   await assertSchoolExists(input.schoolId);
 
-  const scope      = input.scope      ?? existing.scope;
-  const targetRole = input.targetRole ?? existing.targetRole;
+  const { trial, ...fields } = input;
+  const scope       = fields.scope       ?? existing.scope;
+  const targetRoles = fields.targetRoles ?? existing.targetRoles;
 
-  if (scope !== existing.scope || targetRole !== existing.targetRole) {
-    if (scope === 'SCHOOL' && targetRole !== 'ADMIN') {
-      throw appError('A SCHOOL plan is bought by the school ADMIN — targetRole must be ADMIN', 'VALIDATION_ERROR', 400);
-    }
-    const subs = await prisma.subscription.count({ where: { planId } });
-    if (subs > 0) {
-      throw appError('scope/targetRole cannot change once the plan has subscriptions — create a new plan instead', 'PLAN_IN_USE', 409);
-    }
-    if (scope === 'SELF' && existing.features.some(f => f.role !== targetRole)) {
-      throw appError(`Some features are given to roles other than ${targetRole} — update the plan's features first`, 'FEATURE_ROLE_MISMATCH', 400);
-    }
+  if (scope === 'SCHOOL' && !(targetRoles.length === 1 && targetRoles[0] === 'ADMIN')) {
+    throw appError('A SCHOOL plan is bought by the school ADMIN — targetRoles must be [ADMIN]', 'VALIDATION_ERROR', 400);
+  }
+  if (scope !== existing.scope && await prisma.subscription.count({ where: { planId } })) {
+    throw appError('scope cannot change once the plan has subscriptions — create a new plan instead', 'PLAN_IN_USE', 409);
+  }
+  // Adding a role is always fine; dropping one that has bought it isn't.
+  const removedRoles = existing.targetRoles.filter(r => !targetRoles.includes(r));
+  if (removedRoles.length && await prisma.subscription.count({ where: { planId, role: { in: removedRoles } } })) {
+    throw appError(`${removedRoles.join(', ')} already bought this plan — keep the role, or create a new plan instead`, 'PLAN_IN_USE', 409, { removedRoles });
+  }
+  if (scope === 'SELF' && existing.features.some(f => !targetRoles.includes(f.role))) {
+    throw appError(`Some features are given to roles outside ${targetRoles.join(', ')} — update the plan's features first`, 'FEATURE_ROLE_MISMATCH', 400);
   }
 
-  await prisma.subscriptionPlan.update({ where: { id: planId }, data: input });
+  await prisma.subscriptionPlan.update({
+    where: { id: planId },
+    data: {
+      ...fields,
+      ...(trial === null ? { trialStartsAt: null, trialEndsAt: null } : {}),
+      ...(trial ? trialWindow(trial.startDate, trial.endDate) : {}),
+    },
+  });
   return planResponse(planId);
 };
 
