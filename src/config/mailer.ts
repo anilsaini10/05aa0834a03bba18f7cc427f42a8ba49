@@ -34,7 +34,7 @@ export const sendMail = async (
   }
 
   await transporter.sendMail({
-    from: `"Arise" <${env.GMAIL_USER}>`,
+    from: `"School Management" <${env.GMAIL_USER}>`,
     to,
     subject,
     html,

@@ -7,6 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "test": "TS_NODE_TRANSPILE_ONLY=true node --test --require ts-node/register tests/analytics.utils.test.ts",
+    "test:integration": "TS_NODE_TRANSPILE_ONLY=true node --test --test-concurrency=1 --require ts-node/register tests/analytics.integration.test.ts",
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:generate": "npx prisma generate",
     "prisma:studio": "npx prisma studio",
@@ -17,6 +19,11 @@
     "migrate:live": "node scripts/with-env.js .env.live prisma migrate deploy",
     "migrate:status:live": "node scripts/with-env.js .env.live prisma migrate status",
     "create-super-admin:live": "node scripts/with-env.js .env.live ts-node scripts/create-super-admin.ts",
+    "dev:demo": "node scripts/with-env.js .env.demo ts-node-dev --respawn --transpile-only src/server.ts",
+    "studio:demo": "node scripts/with-env.js .env.demo prisma studio --port 5562",
+    "migrate:demo": "node scripts/with-env.js .env.demo prisma migrate deploy",
+    "migrate:status:demo": "node scripts/with-env.js .env.demo prisma migrate status",
+    "create-super-admin:demo": "node scripts/with-env.js .env.demo ts-node scripts/create-super-admin.ts",
     "ping:live": "curl -s --max-time 90 https://zero5aa0834a03bba18f7cc427f42a8ba49.onrender.com/health && echo"
   },
   "dependencies": {

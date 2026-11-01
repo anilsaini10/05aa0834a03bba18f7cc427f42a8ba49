@@ -76,6 +76,7 @@ export const NOTIFICATION_TYPE = {
   EVENT:                 'EVENT',
   LEAVE_REQUEST:         'LEAVE_REQUEST',
   TEACHER_LEAVE_REQUEST: 'TEACHER_LEAVE_REQUEST',
+  INTERVENTION:          'INTERVENTION',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];
@@ -105,6 +106,16 @@ export const SCHOOL_CLOSED_EVENT_TYPES = ['HOLIDAY', 'GOVERNMENT_HOLIDAY', 'VACA
 // Used when School.academicSessionStartMonth isn't set (April, as in
 // most Indian schools).
 export const DEFAULT_ACADEMIC_SESSION_START_MONTH = 4;
+
+// ── Admin analytics ───────────────────────────────────────────────
+// The schema stores no passing criteria, so analytics takes it as a
+// query param (passPercentage) and defaults to the CBSE minimum. Move
+// to a School column if schools need their own.
+export const DEFAULT_PASS_PERCENTAGE           = 33;
+export const DEFAULT_ATTENDANCE_THRESHOLD      = 75;   // % — below this a student is "low attendance"
+export const DEFAULT_SUPPORT_THRESHOLD         = 40;   // % — average marks below this → needs support
+export const DEFAULT_REPEATED_ABSENCE_STREAK   = 3;    // consecutive marked days absent
+export const DEFAULT_DELAYED_GRADING_DAYS      = 7;    // paper date + this → grading is overdue
 
 // ── Subscriptions ─────────────────────────────────────────────────
 // Subscription.status in the DB only records what happened (PENDING /
@@ -138,6 +149,7 @@ export const SUBSCRIPTION_EXPIRING_SOON_DAYS = 7;
 // Per-feature access returned by GET /subscription/entitlements.
 export const FEATURE_ACCESS_STATUS = {
   FREE:             'FREE',
+  TRIAL:            'TRIAL',              // unlocked only by a plan's free trial
   ACTIVE:           'ACTIVE',
   EXPIRING_SOON:    'EXPIRING_SOON',
   PAYMENT_REQUIRED: 'PAYMENT_REQUIRED',
@@ -150,9 +162,19 @@ export const FEATURE_LOCK_REASON = {
   NEVER_SUBSCRIBED: 'NEVER_SUBSCRIBED',
   PENDING_PAYMENT:  'PENDING_PAYMENT',
   EXPIRED:          'EXPIRED',
+  TRIAL_ENDED:      'TRIAL_ENDED',
 } as const;
 
 export type FeatureLockReason = (typeof FEATURE_LOCK_REASON)[keyof typeof FEATURE_LOCK_REASON];
+
+// A plan's free trial window relative to now.
+export const PLAN_TRIAL_STATUS = {
+  SCHEDULED: 'SCHEDULED',
+  ACTIVE:    'ACTIVE',
+  ENDED:     'ENDED',
+} as const;
+
+export type PlanTrialStatus = (typeof PLAN_TRIAL_STATUS)[keyof typeof PLAN_TRIAL_STATUS];
 
 // Roles a plan or feature can target (SUPER_ADMIN never pays).
 export const SUBSCRIBER_ROLES = ['ADMIN', 'TEACHER', 'PARENT'] as const;

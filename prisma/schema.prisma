@@ -156,6 +156,10 @@ model User {
   subscriptionsPaid            Subscription[]            @relation("SubscriptionPaidBy")
   subscriptionsActivated       Subscription[]            @relation("SubscriptionActivatedBy")
   payments                     Payment[]
+  accountRecoveryRequests      AccountRecoveryRequest[]  @relation("AccountRecoveryUser")
+  accountRecoveryResolved      AccountRecoveryRequest[]  @relation("AccountRecoveryResolvedBy")
+  interventionsAssigned        Intervention[]            @relation("InterventionAssignedTo")
+  interventionsCreated         Intervention[]            @relation("InterventionCreatedBy")
 
   @@index([schoolId])
   @@map("users")
@@ -225,6 +229,8 @@ model School {
   teacherAttendanceRecords TeacherAttendanceRecord[]
   staff                    Staff[]
   supportQueries           SupportQuery[]
+  accountRecoveryRequests  AccountRecoveryRequest[]
+  interventions            Intervention[]
   subscriptionPlans        SubscriptionPlan[]
   subscriptions            Subscription[]
   payments                 Payment[]
@@ -458,6 +464,7 @@ model Homework {
 
   @@index([schoolId])
   @@index([classId, sectionId, dueDate])
+  @@index([schoolId, dueDate])
   @@map("homework")
 }
 
@@ -709,6 +716,7 @@ model Student {
   createdAt            DateTime             @default(now())
 
   @@index([schoolId])
+  @@index([schoolId, status, sectionId])
   @@map("students")
 }
 
@@ -918,6 +926,84 @@ model SupportQuery {
   @@map("support_queries")
 }
 
+// ── AccountRecoveryRequest — "request admin" from the login screen ──
+// Raised WITHOUT logging in by a TEACHER/PARENT who forgot their
+// email/password/phone. The submitted contact details are matched to an
+// account at submit time; unmatched requests are never stored. Only one
+// PENDING request per user — re-submitting updates it. The school ADMIN
+// resolves it by hard-resetting the password to the default.
+enum AccountRecoveryStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+model AccountRecoveryRequest {
+  id             String                @id @default(uuid())
+  schoolId       String
+  school         School                @relation(fields: [schoolId], references: [id])
+  userId         String
+  user           User                  @relation("AccountRecoveryUser", fields: [userId], references: [id], onDelete: Cascade)
+  // Exactly what the requester typed (phones normalized to national number).
+  name           String
+  email          String?
+  phones         String[]
+  status         AccountRecoveryStatus @default(PENDING)
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  resolvedByUser User?                 @relation("AccountRecoveryResolvedBy", fields: [resolvedBy], references: [id])
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([schoolId, status, createdAt(sort: Desc)])
+  @@index([userId, status])
+  @@map("account_recovery_requests")
+}
+
+// ── Intervention — action taken on an analytics alert ──────────────
+// Alerts themselves are computed on the fly (admin/analytics/alerts) and
+// never stored; an intervention is the admin's record of acting on one.
+// alertKey is the alert's deterministic key ("LOW_ATTENDANCE:<studentId>:
+// <periodStart>") so the alert list can show its status. entityType /
+// entityId name what it's about (validated against the school on create)
+// — plain columns rather than one FK per entity type.
+enum InterventionStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Intervention {
+  id             String             @id @default(uuid())
+  schoolId       String
+  school         School             @relation(fields: [schoolId], references: [id])
+  alertKey       String?
+  alertType      String?
+  entityType     String
+  entityId       String
+  title          String
+  description    String?
+  actionTaken    String?
+  status         InterventionStatus @default(OPEN)
+  assignedTo     String?
+  assignedToUser User?              @relation("InterventionAssignedTo", fields: [assignedTo], references: [id], onDelete: SetNull)
+  dueDate        DateTime?          @db.Date
+  followUpDate   DateTime?          @db.Date
+  outcome        String?
+  completedAt    DateTime?
+  createdBy      String
+  createdByUser  User               @relation("InterventionCreatedBy", fields: [createdBy], references: [id])
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([schoolId, status, dueDate])
+  @@index([schoolId, alertKey])
+  @@index([schoolId, entityType, entityId])
+  @@index([assignedTo, status])
+  @@map("interventions")
+}
+
 // ══════════════════════════════════════════════════════════════════
 // Subscriptions
 // ──────────────────────────────────────────────────────────────────
@@ -1005,13 +1091,18 @@ model SubscriptionPlan {
   description String?
   scope       PlanScope @default(SELF)
   planType    PlanType  @default(BASE)
-  // Who can buy it — always ADMIN for SCHOOL plans.
-  targetRole  Role
+  // Roles that can see and buy it — always [ADMIN] for SCHOOL plans.
+  targetRoles Role[]
   // null → offered to every school; set → only to this school.
   schoolId    String?
   school      School?   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   sortOrder   Int       @default(0)
   isActive    Boolean   @default(true)
+  // Free trial window: inside it, everyone the plan is offered to gets its
+  // features without paying. trialEndsAt is exclusive (00:00 IST the day
+  // after the last trial day).
+  trialStartsAt DateTime?
+  trialEndsAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -1019,7 +1110,7 @@ model SubscriptionPlan {
   prices        PlanPrice[]
   subscriptions Subscription[]
 
-  @@index([targetRole, isActive])
+  @@index([isActive])
   @@map("subscription_plans")
 }
 

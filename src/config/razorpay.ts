@@ -23,6 +23,13 @@ export const getRazorpayKeyId = (): string => {
   return env.RAZORPAY_KEY_ID;
 };
 
+// Safe to send to any logged-in user: never includes the secret.
+export const getRazorpayPublicConfig = () => ({
+  configured: Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET),
+  keyId:      env.RAZORPAY_KEY_ID ?? null,
+  mode:       env.RAZORPAY_KEY_ID?.startsWith('rzp_live_') ? 'live' : env.RAZORPAY_KEY_ID ? 'test' : null,
+});
+
 // Checkout signature = HMAC-SHA256(order_id + "|" + payment_id, key_secret).
 export const isValidCheckoutSignature = (orderId: string, paymentId: string, signature: string): boolean => {
   if (!env.RAZORPAY_KEY_SECRET) throw notConfigured();

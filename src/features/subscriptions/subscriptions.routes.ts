@@ -14,6 +14,7 @@ subscriptionRouter.post('/subscribe',                                c.subscribe
 subscriptionRouter.get('/my-subscriptions',                          c.listMySubscriptionsHandler);
 subscriptionRouter.get('/my-subscriptions/:subscriptionId',          c.getMySubscriptionHandler);
 subscriptionRouter.post('/my-subscriptions/:subscriptionId/cancel',  c.cancelMySubscriptionHandler);
+subscriptionRouter.get('/razorpay-config',                                   c.razorpayConfigHandler);
 subscriptionRouter.post('/my-subscriptions/:subscriptionId/razorpay-order',  c.createRazorpayOrderHandler);
 subscriptionRouter.post('/my-subscriptions/:subscriptionId/razorpay-verify', c.verifyRazorpayPaymentHandler);
 
