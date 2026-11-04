@@ -172,13 +172,14 @@ export const login = async (
   input: LoginInput,
 ): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
 
-  const { identifier, password, role, schoolId } = input;
+  const { identifier, password, role, schoolId, customRoleId } = input;
   const isSchoolScoped = assertSchoolScope(role, schoolId);
 
   const user = await prisma.user.findFirst({
     where: {
       role,
       ...(isSchoolScoped ? { schoolId } : {}),
+      ...(customRoleId ? { customRoleId } : {}),   // wrong role → same "Invalid credentials"
       OR: identifierMatchers(identifier),
     },
     include: { school: true, customRole: CUSTOM_ROLE_SELECT },
@@ -231,7 +232,7 @@ const otpError = (
   return err;
 };
 
-const findOtpLoginUser = async ({ phone, role, schoolId }: SendLoginOtpInput) => {
+const findOtpLoginUser = async ({ phone, role, schoolId, customRoleId }: SendLoginOtpInput) => {
   const isSchoolScoped = assertSchoolScope(role, schoolId);
 
   const user = await prisma.user.findFirst({
@@ -239,6 +240,7 @@ const findOtpLoginUser = async ({ phone, role, schoolId }: SendLoginOtpInput) =>
       phone,
       role,
       ...(isSchoolScoped ? { schoolId } : {}),
+      ...(customRoleId ? { customRoleId } : {}),
     },
     include: { school: true, customRole: CUSTOM_ROLE_SELECT },
   });

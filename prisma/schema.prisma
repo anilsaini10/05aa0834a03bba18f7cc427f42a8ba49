@@ -134,40 +134,43 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  school                       School?                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  customRole                   CustomRole?               @relation("CustomRoleUsers", fields: [customRoleId], references: [id], onDelete: Restrict)
-  customRolesCreated           CustomRole[]              @relation("CustomRoleCreatedBy")
-  rolePermissionsUpdated       SchoolRolePermission[]    @relation("RolePermissionUpdatedBy")
-  refreshTokens                RefreshToken[]
-  loginOtps                    LoginOtp[]
-  deviceTokens                 DeviceToken[]
-  notifications                Notification[]
-  parentOfStudents             Student[]
-  teacherProfile               Teacher?
-  announcementsCreated         Announcement[]
-  eventsCreated                Event[]
-  examsCreated                 Exam[]
-  examSchedulesCreated         ExamSchedule[]
-  examMarksGraded              ExamMark[]
-  attendanceMarked             AttendanceRecord[]
-  homeworkCreated              Homework[]
-  homeworkSubmissionsMarked    HomeworkSubmission[]
-  classSchedulesCreated        ClassSchedule[]
-  leaveRequestsApplied         LeaveRequest[]            @relation("LeaveAppliedBy")
-  leaveRequestsReviewed        LeaveRequest[]            @relation("LeaveReviewedBy")
-  teacherLeaveRequestsReviewed TeacherLeaveRequest[]     @relation("TeacherLeaveReviewedBy")
-  teacherAttendanceMarked      TeacherAttendanceRecord[]
-  passwordResetTokens          PasswordResetToken[]
-  supportQueriesCreated        SupportQuery[]            @relation("SupportQueryCreatedBy")
-  supportQueriesReplied        SupportQuery[]            @relation("SupportQueryRepliedBy")
-  subscriptions                Subscription[]            @relation("SubscriptionUser")
-  subscriptionsPaid            Subscription[]            @relation("SubscriptionPaidBy")
-  subscriptionsActivated       Subscription[]            @relation("SubscriptionActivatedBy")
-  payments                     Payment[]
-  accountRecoveryRequests      AccountRecoveryRequest[]  @relation("AccountRecoveryUser")
-  accountRecoveryResolved      AccountRecoveryRequest[]  @relation("AccountRecoveryResolvedBy")
-  interventionsAssigned        Intervention[]            @relation("InterventionAssignedTo")
-  interventionsCreated         Intervention[]            @relation("InterventionCreatedBy")
+  school                        School?                       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  customRole                    CustomRole?                   @relation("CustomRoleUsers", fields: [customRoleId], references: [id], onDelete: Restrict)
+  customRolesCreated            CustomRole[]                  @relation("CustomRoleCreatedBy")
+  feePaymentsCollected          FeePayment[]                  @relation("FeePaymentCollectedBy")
+  salarySlipsCredited           SalarySlip[]                  @relation("SalarySlipCreditedBy")
+  rolePermissionsUpdated        SchoolRolePermission[]        @relation("RolePermissionUpdatedBy")
+  builtInRolePermissionsUpdated SchoolBuiltInRolePermission[] @relation("BuiltInRolePermissionUpdatedBy")
+  refreshTokens                 RefreshToken[]
+  loginOtps                     LoginOtp[]
+  deviceTokens                  DeviceToken[]
+  notifications                 Notification[]
+  parentOfStudents              Student[]
+  teacherProfile                Teacher?
+  announcementsCreated          Announcement[]
+  eventsCreated                 Event[]
+  examsCreated                  Exam[]
+  examSchedulesCreated          ExamSchedule[]
+  examMarksGraded               ExamMark[]
+  attendanceMarked              AttendanceRecord[]
+  homeworkCreated               Homework[]
+  homeworkSubmissionsMarked     HomeworkSubmission[]
+  classSchedulesCreated         ClassSchedule[]
+  leaveRequestsApplied          LeaveRequest[]                @relation("LeaveAppliedBy")
+  leaveRequestsReviewed         LeaveRequest[]                @relation("LeaveReviewedBy")
+  teacherLeaveRequestsReviewed  TeacherLeaveRequest[]         @relation("TeacherLeaveReviewedBy")
+  teacherAttendanceMarked       TeacherAttendanceRecord[]
+  passwordResetTokens           PasswordResetToken[]
+  supportQueriesCreated         SupportQuery[]                @relation("SupportQueryCreatedBy")
+  supportQueriesReplied         SupportQuery[]                @relation("SupportQueryRepliedBy")
+  subscriptions                 Subscription[]                @relation("SubscriptionUser")
+  subscriptionsPaid             Subscription[]                @relation("SubscriptionPaidBy")
+  subscriptionsActivated        Subscription[]                @relation("SubscriptionActivatedBy")
+  payments                      Payment[]
+  accountRecoveryRequests       AccountRecoveryRequest[]      @relation("AccountRecoveryUser")
+  accountRecoveryResolved       AccountRecoveryRequest[]      @relation("AccountRecoveryResolvedBy")
+  interventionsAssigned         Intervention[]                @relation("InterventionAssignedTo")
+  interventionsCreated          Intervention[]                @relation("InterventionCreatedBy")
 
   @@index([schoolId])
   @@index([customRoleId])
@@ -193,6 +196,7 @@ model CustomRole {
 
   users             User[]                 @relation("CustomRoleUsers")
   schoolPermissions SchoolRolePermission[]
+  displayConfig     RoleDisplayConfig?
 
   @@map("custom_roles")
 }
@@ -200,7 +204,9 @@ model CustomRole {
 // ── SchoolRolePermission — what a school's admin lets a role do ──
 // One row per (school, custom role); permissions has the same shape as
 // School.permissions. A key the school has set to false stays false for
-// every role in that school (see effectivePermissions).
+// every role in that school (see effectivePermissions). limits is the
+// super admin's cap for this role in this school — same shape, and a key
+// set to false there stays false whatever the admin saves.
 model SchoolRolePermission {
   id            String     @id @default(uuid())
   schoolId      String
@@ -208,6 +214,7 @@ model SchoolRolePermission {
   customRoleId  String
   customRole    CustomRole @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
   permissions   Json       @default("{}")
+  limits        Json       @default("{}")
   updatedBy     String?
   updatedByUser User?      @relation("RolePermissionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   createdAt     DateTime   @default(now())
@@ -215,6 +222,26 @@ model SchoolRolePermission {
 
   @@unique([schoolId, customRoleId])
   @@map("school_role_permissions")
+}
+
+// ── SchoolBuiltInRolePermission — same (incl. limits), for TEACHER / PARENT 
+// Built-in roles aren't CustomRole rows, so they get their own table,
+// keyed by the Role enum. Only TEACHER and PARENT (DB CHECK constraint):
+// ADMIN gets the whole school's permissions, SUPER_ADMIN isn't scoped.
+model SchoolBuiltInRolePermission {
+  id            String   @id @default(uuid())
+  schoolId      String
+  school        School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  role          Role
+  permissions   Json     @default("{}")
+  limits        Json     @default("{}")
+  updatedBy     String?
+  updatedByUser User?    @relation("BuiltInRolePermissionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([schoolId, role])
+  @@map("school_builtin_role_permissions")
 }
 
 // ── School ────────────────────────────────────────────────────
@@ -288,7 +315,13 @@ model School {
   supportQueries           SupportQuery[]
   accountRecoveryRequests  AccountRecoveryRequest[]
   interventions            Intervention[]
+  feeStructures            FeeStructure[]
+  studentFees              StudentFee[]
+  feePayments              FeePayment[]
+  salarySlips              SalarySlip[]
+  sequences                SchoolSequence[]
   rolePermissions          SchoolRolePermission[]
+  builtInRolePermissions   SchoolBuiltInRolePermission[]
   subscriptionPlans        SubscriptionPlan[]
   subscriptions            Subscription[]
   payments                 Payment[]
@@ -689,6 +722,7 @@ model Class {
   attendanceRecords AttendanceRecord[]
   homework          Homework[]
   classSchedules    ClassSchedule[]
+  feeStructures     FeeStructure[]
   leaveRequests     LeaveRequest[]
   createdAt         DateTime           @default(now())
 
@@ -770,6 +804,7 @@ model Student {
   examMarks            ExamMark[]
   attendanceRecords    AttendanceRecord[]
   leaveRequests        LeaveRequest[]
+  fees                 StudentFee[]
   homeworkSubmissions  HomeworkSubmission[]
   createdAt            DateTime             @default(now())
 
@@ -803,6 +838,7 @@ model Teacher {
   classSchedules    ClassSchedule[]
   examInvigilations ExamSchedule[]
   leaveRequests     TeacherLeaveRequest[]
+  salarySlips       SalarySlip[]
   attendanceRecords TeacherAttendanceRecord[]
 
   @@index([schoolId])
@@ -925,7 +961,7 @@ model TeacherAttendanceRecord {
 // a plain record managed by Admin, no login/User account (unlike
 // Teacher). designation is free text since titles vary by school.
 model Staff {
-  id               String   @id @default(uuid())
+  id               String       @id @default(uuid())
   employeeId       String
   name             String
   email            String?
@@ -933,15 +969,16 @@ model Staff {
   gender           Gender
   designation      String
   salary           Float
-  qualification    String   @default("")
-  experienceYears  Int      @default(0)
-  experienceMonths Int      @default(0)
+  qualification    String       @default("")
+  experienceYears  Int          @default(0)
+  experienceMonths Int          @default(0)
   joiningDate      DateTime
-  status           String   @default("ACTIVE")
+  salarySlips      SalarySlip[]
+  status           String       @default("ACTIVE")
   schoolId         String
-  school           School   @relation(fields: [schoolId], references: [id])
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  school           School       @relation(fields: [schoolId], references: [id])
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@index([schoolId])
   @@map("staff")
@@ -1276,4 +1313,210 @@ model Payment {
   @@index([subscriptionId])
   @@index([schoolId, createdAt(sort: Desc)])
   @@map("payments")
+}
+
+// ════════════════════════════════════════════════════════════
+// Student fees
+//   FeeStructure — a fee the school charges ("Tuition Q1", ₹12,000, due
+//                  15 Jul) for one session, for one class or all classes.
+//   StudentFee   — that fee assigned to one student (amounts copied, so
+//                  editing the structure later never changes a bill), or
+//                  an ad-hoc charge with no structure.
+//   FeePayment   — money received against one StudentFee. Never deleted:
+//                  a wrong entry is VOIDED, which recomputes the fee.
+// Amounts are rupees with paise (Decimal 12,2). sessionYear is the year
+// the academic session starts in (2026 → 2026-27), as in analytics.
+// ════════════════════════════════════════════════════════════
+
+enum FeeStatus {
+  PENDING // nothing paid yet
+  PARTIAL // something paid, balance left
+  PAID // fully paid (or payable is 0)
+  WAIVED // balance forgiven by the school
+  CANCELLED // charge withdrawn (only when nothing was paid)
+}
+
+enum FeePaymentStatus {
+  SUCCESS
+  VOIDED
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
+  CHEQUE
+  ONLINE
+}
+
+model FeeStructure {
+  id          String       @id @default(uuid())
+  schoolId    String
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  name        String
+  category    String
+  description String?
+  amount      Decimal      @db.Decimal(12, 2)
+  dueDate     DateTime     @db.Date
+  sessionYear Int
+  // null = every class
+  classId     String?
+  class       Class?       @relation(fields: [classId], references: [id], onDelete: Restrict)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  studentFees StudentFee[]
+
+  @@index([schoolId, sessionYear])
+  @@map("fee_structures")
+}
+
+model StudentFee {
+  id             String        @id @default(uuid())
+  schoolId       String
+  school         School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  studentId      String
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  feeStructureId String?
+  feeStructure   FeeStructure? @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+  title          String
+  category       String
+  sessionYear    Int
+  amount         Decimal       @db.Decimal(12, 2)
+  discount       Decimal       @default(0) @db.Decimal(12, 2)
+  fine           Decimal       @default(0) @db.Decimal(12, 2)
+  // Sum of SUCCESS payments — kept in step by the payment/void code.
+  paidAmount     Decimal       @default(0) @db.Decimal(12, 2)
+  dueDate        DateTime      @db.Date
+  status         FeeStatus     @default(PENDING)
+  statusReason   String?
+  note           String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  payments       FeePayment[]
+
+  // A structure is assigned to a student at most once.
+  @@unique([studentId, feeStructureId])
+  @@index([schoolId, sessionYear, status])
+  @@index([schoolId, status, dueDate])
+  @@map("student_fees")
+}
+
+model FeePayment {
+  id              String           @id @default(uuid())
+  schoolId        String
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  studentFeeId    String
+  studentFee      StudentFee       @relation(fields: [studentFeeId], references: [id], onDelete: Restrict)
+  studentId       String
+  receiptNo       String
+  amount          Decimal          @db.Decimal(12, 2)
+  mode            PaymentMode
+  referenceNo     String?
+  paidAt          DateTime
+  note            String?
+  status          FeePaymentStatus @default(SUCCESS)
+  voidReason      String?
+  voidedAt        DateTime?
+  collectedBy     String?
+  collectedByUser User?            @relation("FeePaymentCollectedBy", fields: [collectedBy], references: [id], onDelete: SetNull)
+  createdAt       DateTime         @default(now())
+
+  @@unique([schoolId, receiptNo])
+  @@index([studentFeeId])
+  @@index([studentId])
+  @@index([schoolId, paidAt])
+  @@map("fee_payments")
+}
+
+// ════════════════════════════════════════════════════════════
+// Salary — one SalarySlip per employee per month. Employee is a Teacher
+// (has a login, sees their slips) or a Staff record (no login). Name,
+// code and base salary are copied at generation so a later raise or
+// rename doesn't rewrite old slips.
+//   PENDING → CREDITED (paid)      PENDING ⇄ ON_HOLD      → CANCELLED
+// ════════════════════════════════════════════════════════════
+
+enum SalaryStatus {
+  PENDING
+  ON_HOLD
+  CREDITED
+  CANCELLED
+}
+
+enum EmployeeType {
+  TEACHER
+  STAFF
+}
+
+model SalarySlip {
+  id              String       @id @default(uuid())
+  schoolId        String
+  school          School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  slipNo          String
+  employeeType    EmployeeType
+  teacherId       String?
+  teacher         Teacher?     @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  staffId         String?
+  staff           Staff?       @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  employeeName    String
+  employeeCode    String
+  month           Int
+  year            Int
+  baseSalary      Decimal      @db.Decimal(12, 2)
+  // [{ label, amount }]
+  allowances      Json         @default("[]")
+  deductions      Json         @default("[]")
+  grossAmount     Decimal      @db.Decimal(12, 2)
+  totalDeductions Decimal      @db.Decimal(12, 2)
+  netAmount       Decimal      @db.Decimal(12, 2)
+  status          SalaryStatus @default(PENDING)
+  statusReason    String?
+  note            String?
+  paymentMode     PaymentMode?
+  referenceNo     String?
+  creditedAt      DateTime?
+  creditedBy      String?
+  creditedByUser  User?        @relation("SalarySlipCreditedBy", fields: [creditedBy], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([teacherId, month, year])
+  @@unique([staffId, month, year])
+  @@unique([schoolId, slipNo])
+  @@index([schoolId, year, month, status])
+  @@map("salary_slips")
+}
+
+// ── SchoolSequence — gap-free-ish running numbers per school ──
+// (fee receipts, salary slips). Incremented atomically in SQL, see
+// shared/utils/sequence.ts.
+model SchoolSequence {
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name     String
+  value    Int    @default(0)
+
+  @@id([schoolId, name])
+  @@map("school_sequences")
+}
+
+// ── RoleDisplayConfig — which roles appear on the login screen ────
+// One row per displayable role. Exactly one of builtInRole / customRoleId
+// is set (DB CHECK). Super admin configures showOnWeb / showOnMobile so
+// the login screen on each platform only lists the relevant roles.
+model RoleDisplayConfig {
+  id           String      @id @default(uuid())
+  builtInRole  Role?       @unique
+  customRoleId String?     @unique
+  customRole   CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
+  label        String
+  showOnWeb    Boolean     @default(true)
+  showOnMobile Boolean     @default(true)
+  displayOrder Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@map("role_display_configs")
 }

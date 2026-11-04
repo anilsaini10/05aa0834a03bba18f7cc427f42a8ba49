@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { CreateRoleSchema, UpdateRoleSchema, ListRolesQuerySchema } from './customRoles.validation';
+import { ensureDisplayConfig } from '../roleDisplay/roleDisplay.service';
 
 const appError = (message: string, code: string, statusCode: number, details?: Record<string, unknown>) => {
   const err = new Error(message) as any;
@@ -59,6 +60,7 @@ export const createRole = async (superAdminId: string, input: CreateRoleSchema) 
       },
       include: WITH_COUNT,
     });
+    await ensureDisplayConfig(role.id, role.name);
     return toItem(role);
   } catch (err) {
     // Two creates racing past assertKeyFree — the unique index decides.

@@ -77,6 +77,8 @@ export const NOTIFICATION_TYPE = {
   LEAVE_REQUEST:         'LEAVE_REQUEST',
   TEACHER_LEAVE_REQUEST: 'TEACHER_LEAVE_REQUEST',
   INTERVENTION:          'INTERVENTION',
+  FEE_PAYMENT:           'FEE_PAYMENT',
+  SALARY:                'SALARY',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];
@@ -178,3 +180,11 @@ export type PlanTrialStatus = (typeof PLAN_TRIAL_STATUS)[keyof typeof PLAN_TRIAL
 
 // Roles a plan or feature can target (SUPER_ADMIN never pays).
 export const SUBSCRIBER_ROLES = ['ADMIN', 'TEACHER', 'PARENT'] as const;
+
+// ── Permission keys the backend checks ────────────────────────────
+// Most permission keys are UI-only; these also guard routes (see
+// middleware/requirePermission.ts). Frontends must use the same strings.
+export const PERMISSION_KEYS = {
+  FEES_MANAGE:   'feesManage',     // fee structures, student fees, payments, reports
+  SALARY_MANAGE: 'salaryManage',   // generate / edit / credit salary slips
+} as const;

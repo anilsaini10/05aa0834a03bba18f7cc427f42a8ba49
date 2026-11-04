@@ -122,6 +122,21 @@ test('the created id logs in (email, username, phone) as STAFF', { skip: !enable
   assert.equal((await call('GET', '/admin/roles', tokens.staff)).status, 403);
 });
 
+test('login screen: school roles list, then login with the picked role', { skip: !enabled }, async () => {
+  // Public: only roles some active STAFF account in this school has.
+  const a = await call('GET', `/schools/${ids.a}/roles`);
+  assert.equal(a.status, 200);
+  assert.deepEqual(a.body.data.roles, [{ role: 'STAFF', customRoleId: ids.role, key: 'ACCOUNTANT', name: 'Accountant' }]);
+  assert.deepEqual((await call('GET', `/schools/${ids.b}/roles`)).body.data.roles, []);
+  assert.equal((await call('GET', '/schools/00000000-0000-4000-8000-000000000000/roles')).body.error.code, 'SCHOOL_NOT_FOUND');
+
+  const body = { identifier: 'ravi@schoola.com', password: '123456', role: 'STAFF', schoolId: ids.a };
+  assert.equal((await call('POST', '/auth/login', undefined, { ...body, customRoleId: ids.role })).status, 200);
+  assert.equal((await call('POST', '/auth/login', undefined, { ...body, customRoleId: ids.role2 })).body.error.code, 'INVALID_CREDENTIALS');
+  const notStaff = await call('POST', '/auth/login', undefined, { ...body, role: 'ADMIN', customRoleId: ids.role });
+  assert.equal(notStaff.body.error.code, 'VALIDATION_ERROR');
+});
+
 test('admin reset password works for STAFF', { skip: !enabled }, async () => {
   const r = await call('POST', `/admin/users/${ids.user}/reset-password`, tokens.a);
   assert.equal(r.status, 200);

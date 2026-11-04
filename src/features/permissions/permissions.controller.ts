@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as permissionsService from './permissions.service';
 import {
-  replacePermissionsSchema, patchPermissionsSchema, schoolIdParamSchema, roleIdParamSchema,
+  replacePermissionsSchema, patchPermissionsSchema, schoolIdParamSchema, roleIdParamSchema, schoolRoleParamSchema,
 } from './permissions.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -38,11 +38,43 @@ export const patchSchoolPermissionsHandler = async (req: Request, res: Response,
   }
 };
 
-// Read-only: what this school's admin gave each role.
+// ── SUPER_ADMIN: per-role limits in a school ──────────────────
+// Body is { permissions } like everywhere else; it's stored as the role's
+// limits (for ADMIN: the school's permissions).
+
 export const getSchoolRolePermissionsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { schoolId } = schoolIdParamSchema.parse(req.params);
-    sendSuccess(res, await permissionsService.listRolePermissions(schoolId, true));
+    sendSuccess(res, await permissionsService.listRoleLimits(schoolId));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getSchoolRoleLimitsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { schoolId, roleId } = schoolRoleParamSchema.parse(req.params);
+    sendSuccess(res, await permissionsService.getRoleLimits(schoolId, roleId));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const replaceSchoolRoleLimitsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { schoolId, roleId } = schoolRoleParamSchema.parse(req.params);
+    const { permissions }      = replacePermissionsSchema.parse(req.body);
+    sendSuccess(res, await permissionsService.replaceRoleLimits(schoolId, userOf(req).sub, roleId, permissions));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const patchSchoolRoleLimitsHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { schoolId, roleId } = schoolRoleParamSchema.parse(req.params);
+    const { permissions }      = patchPermissionsSchema.parse(req.body);
+    sendSuccess(res, await permissionsService.patchRoleLimits(schoolId, userOf(req).sub, roleId, permissions));
   } catch (err) {
     next(err);
   }
