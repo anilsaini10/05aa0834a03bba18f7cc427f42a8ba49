@@ -147,6 +147,7 @@ model User {
   notifications                 Notification[]
   parentOfStudents              Student[]
   teacherProfile                Teacher?
+  staffProfile                  Staff?
   announcementsCreated          Announcement[]
   eventsCreated                 Event[]
   examsCreated                  Exam[]
@@ -195,6 +196,7 @@ model CustomRole {
   updatedAt     DateTime @updatedAt
 
   users             User[]                 @relation("CustomRoleUsers")
+  staff             Staff[]                @relation("CustomRoleStaff")
   schoolPermissions SchoolRolePermission[]
   displayConfig     RoleDisplayConfig?
 
@@ -958,16 +960,21 @@ model TeacherAttendanceRecord {
 
 // ── Staff ─────────────────────────────────────────────────────
 // Non-teaching staff (accountant, librarian, driver, peon, etc.) —
-// a plain record managed by Admin, no login/User account (unlike
-// Teacher). designation is free text since titles vary by school.
+// a plain record managed by Admin. designation is picked from the
+// CustomRole list; customRoleId links to it so staff can be grouped
+// by role. designation stays as a snapshot label.
 model Staff {
   id               String       @id @default(uuid())
   employeeId       String
+  userId           String?      @unique
+  user             User?        @relation(fields: [userId], references: [id], onDelete: Restrict)
   name             String
   email            String?
   phone            String
   gender           Gender
   designation      String
+  customRoleId     String?
+  customRole       CustomRole?  @relation("CustomRoleStaff", fields: [customRoleId], references: [id], onDelete: Restrict)
   salary           Float
   qualification    String       @default("")
   experienceYears  Int          @default(0)
@@ -981,6 +988,7 @@ model Staff {
   updatedAt        DateTime     @updatedAt
 
   @@index([schoolId])
+  @@index([customRoleId])
   @@map("staff")
 }
 
