@@ -181,6 +181,52 @@ export type PlanTrialStatus = (typeof PLAN_TRIAL_STATUS)[keyof typeof PLAN_TRIAL
 // Roles a plan or feature can target (SUPER_ADMIN never pays).
 export const SUBSCRIBER_ROLES = ['ADMIN', 'TEACHER', 'PARENT'] as const;
 
+// ── Syllabus Management ─────────────────────────────────────────────
+export const SYLLABUS_PLAN_STATUS = {
+  DRAFT:     'DRAFT',
+  ACTIVE:    'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  ARCHIVED:  'ARCHIVED',
+} as const;
+
+export type SyllabusPlanStatus = (typeof SYLLABUS_PLAN_STATUS)[keyof typeof SYLLABUS_PLAN_STATUS];
+
+export const SYLLABUS_PLAN_STATUS_VALUES = Object.values(SYLLABUS_PLAN_STATUS) as [
+  SyllabusPlanStatus, ...SyllabusPlanStatus[]
+];
+
+export const CHAPTER_PROGRESS_STATUS = {
+  NOT_STARTED: 'NOT_STARTED',
+  IN_PROGRESS: 'IN_PROGRESS',
+  COMPLETED:   'COMPLETED',
+} as const;
+
+export type ChapterProgressStatus = (typeof CHAPTER_PROGRESS_STATUS)[keyof typeof CHAPTER_PROGRESS_STATUS];
+
+export const CHAPTER_PROGRESS_STATUS_VALUES = Object.values(CHAPTER_PROGRESS_STATUS) as [
+  ChapterProgressStatus, ...ChapterProgressStatus[]
+];
+
+export const SCHEDULE_STATUS = {
+  AHEAD:    'AHEAD',
+  ON_TRACK: 'ON_TRACK',
+  DELAYED:  'DELAYED',
+} as const;
+
+export type ScheduleStatusType = (typeof SCHEDULE_STATUS)[keyof typeof SCHEDULE_STATUS];
+
+export const APPROVAL_STATUS = {
+  PENDING:  'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export type ApprovalStatus = (typeof APPROVAL_STATUS)[keyof typeof APPROVAL_STATUS];
+
+export const APPROVAL_STATUS_VALUES = Object.values(APPROVAL_STATUS) as [
+  ApprovalStatus, ...ApprovalStatus[]
+];
+
 // ── Permission keys the backend checks ────────────────────────────
 // Most permission keys are UI-only; these also guard routes (see
 // middleware/requirePermission.ts). Frontends must use the same strings.
