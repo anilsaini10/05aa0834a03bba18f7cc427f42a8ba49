@@ -11,12 +11,19 @@ export const signupSchema = z.object({
   password:   z.string().min(6, 'Password must be at least 6 characters').max(100),
 });
 
+// STAFF may also send the custom role picked on the login screen
+// (GET /schools/:schoolId/roles); the account must have that role.
+const customRoleIdField = z.string().uuid('Invalid role id').optional();
+const customRoleOnlyForStaff = (d: { role: Role; customRoleId?: string }) => !d.customRoleId || d.role === 'STAFF';
+const customRoleOnlyForStaffError = { message: 'customRoleId is only allowed with role STAFF', path: ['customRoleId'] };
+
 export const loginSchema = z.object({
-  identifier: z.string().min(1, 'Identifier is required'),
-  password:   z.string().min(1, 'Password is required'),
-  role:       z.nativeEnum(Role),
-  schoolId:   z.string().uuid('Invalid school id').optional(),
-});
+  identifier:   z.string().min(1, 'Identifier is required'),
+  password:     z.string().min(1, 'Password is required'),
+  role:         z.nativeEnum(Role),
+  schoolId:     z.string().uuid('Invalid school id').optional(),
+  customRoleId: customRoleIdField,
+}).refine(customRoleOnlyForStaff, customRoleOnlyForStaffError);
 
 // ADMIN / SUPER_ADMIN set or clear (null / "") their own username.
 export const updateUsernameSchema = z.object({
@@ -58,17 +65,19 @@ const phoneField = z.string().transform((value, ctx) => {
 });
 
 export const sendLoginOtpSchema = z.object({
-  phone:    phoneField,
-  role:     z.nativeEnum(Role),
-  schoolId: z.string().uuid('Invalid school id').optional(),
-});
+  phone:        phoneField,
+  role:         z.nativeEnum(Role),
+  schoolId:     z.string().uuid('Invalid school id').optional(),
+  customRoleId: customRoleIdField,
+}).refine(customRoleOnlyForStaff, customRoleOnlyForStaffError);
 
 export const verifyLoginOtpSchema = z.object({
-  phone:    phoneField,
-  otp:      z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
-  role:     z.nativeEnum(Role),
-  schoolId: z.string().uuid('Invalid school id').optional(),
-});
+  phone:        phoneField,
+  otp:          z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
+  role:         z.nativeEnum(Role),
+  schoolId:     z.string().uuid('Invalid school id').optional(),
+  customRoleId: customRoleIdField,
+}).refine(customRoleOnlyForStaff, customRoleOnlyForStaffError);
 
 export type SignupSchema               = z.infer<typeof signupSchema>;
 export type LoginSchema                = z.infer<typeof loginSchema>;

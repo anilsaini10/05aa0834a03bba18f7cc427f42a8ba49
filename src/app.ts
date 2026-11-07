@@ -32,6 +32,12 @@ import { supportRouter, superAdminSupportRouter } from './features/support/suppo
 import { subscriptionRouter, superAdminSubscriptionRouter } from './features/subscriptions/subscriptions.routes';
 import { accountRecoveryRouter, adminAccountRecoveryRouter } from './features/accountRecovery/accountRecovery.routes';
 import { adminCalendarRouter, teacherCalendarRouter, parentCalendarRouter } from './features/academicCalendar/academicCalendar.routes';
+import adminSyllabusRoutes from './features/admin/syllabus/syllabus.routes';
+import { teacherSyllabusRouter } from './features/teacher/teacherSyllabus.routes';
+import { parentSyllabusRouter } from './features/students/parentSyllabus.routes';
+import { adminFeesRouter, parentFeesRouter } from './features/admin/fees/fees.routes';
+import { adminSalaryRouter, teacherSalaryRouter } from './features/admin/salary/salary.routes';
+import { publicRolesRouter, publicSchoolsRouter, superAdminRoleDisplayRouter, adminRoleDisplayRouter } from './features/roleDisplay/roleDisplay.routes';
 
 // ── Middleware ────────────────────────────────────────────────
 import { errorHandler } from './middleware/errorHandler';
@@ -62,6 +68,8 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // ── API Routes ────────────────────────────────────────────────
 app.use('/api/auth/permissions', myPermissionsRouter);
+app.use('/api/auth/roles', publicRolesRouter);
+app.use('/api/auth/schools', publicSchoolsRouter);
 app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/schools', schoolRoutes);
@@ -85,11 +93,19 @@ app.use('/api/admin/interventions', interventionRoutes);
 app.use('/api/admin/roles', adminRolesRouter);
 app.use('/api/admin/role-users', adminRoleUsersRouter);
 app.use('/api/admin/permissions', adminPermissionsRouter);
+app.use('/api/admin/fees', adminFeesRouter);
+app.use('/api/admin/salary', adminSalaryRouter);
+app.use('/api/admin/role-display', adminRoleDisplayRouter);
+app.use('/api/teacher/salary', teacherSalaryRouter);
+app.use('/api/students/fees', parentFeesRouter);
 app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
 app.use('/api/admin/academic-calendar', adminCalendarRouter);
+app.use('/api/admin/syllabus', adminSyllabusRoutes);
 app.use('/api/teacher/academic-calendar', teacherCalendarRouter);
+app.use('/api/teacher/syllabus', teacherSyllabusRouter);
 app.use('/api/students/academic-calendar', parentCalendarRouter);
+app.use('/api/students/syllabus', parentSyllabusRouter);
 app.use('/api/support', supportRouter);
 app.use('/api/admin/support', supportRouter);
 app.use('/api/super-admin/support', superAdminSupportRouter);
@@ -98,6 +114,7 @@ app.use('/api/admin/account-recovery', adminAccountRecoveryRouter);
 app.use('/api/subscription', subscriptionRouter);
 app.use('/api/super-admin/subscription', superAdminSubscriptionRouter);
 app.use('/api/super-admin/roles', superAdminRolesRouter);
+app.use('/api/super-admin/role-display', superAdminRoleDisplayRouter);
 app.use('/api/super-admin/schools/:schoolId', superAdminSchoolPermissionsRouter);
 app.use('/api/super-admin', superAdminRoutes);
 

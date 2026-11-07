@@ -19,8 +19,8 @@ export const createHandler = async (req: Request, res: Response, next: NextFunct
       return;
     }
 
-    const input    = createStaffSchema.parse(req.body);
-    const result   = await staffService.createStaff(schoolId, input);
+    const input  = createStaffSchema.parse(req.body);
+    const result = await staffService.createStaff(schoolId, input);
     sendSuccess(res, result, 201);
   } catch (err) {
     next(err);

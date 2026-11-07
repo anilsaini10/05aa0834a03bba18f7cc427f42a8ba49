@@ -1,7 +1,7 @@
 // Permission helpers — no DB queries. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toCamelCase, replacePermissionsSchema, patchPermissionsSchema } from '../src/features/permissions/permissions.validation';
+import { toCamelCase, replacePermissionsSchema, patchPermissionsSchema, roleIdParamSchema, schoolRoleParamSchema } from '../src/features/permissions/permissions.validation';
 import { effectivePermissions } from '../src/features/permissions/permissions.service';
 
 test('camelCase suggestions', () => {
@@ -45,4 +45,31 @@ test('school false blocks the same role key', () => {
   );
   assert.deepEqual(e.permissions, { feesCollect: true, salaryView: false, reportsView: false, maxDiscountPercent: 10 });
   assert.deepEqual(e.blockedBySchool, ['salaryView']);
+});
+
+test('role id: custom role uuid or built-in role name', () => {
+  const id = '3f1c2a4e-8b7d-4c1a-9e2f-1a2b3c4d5e6f';
+  assert.equal(roleIdParamSchema.parse({ roleId: id }).roleId, id);
+  assert.equal(roleIdParamSchema.parse({ roleId: 'teacher' }).roleId, 'TEACHER');
+  assert.equal(roleIdParamSchema.parse({ roleId: 'PARENT' }).roleId, 'PARENT');
+  assert.equal(roleIdParamSchema.safeParse({ roleId: 'ADMIN' }).success, false);
+  assert.equal(roleIdParamSchema.safeParse({ roleId: 'nope' }).success, false);
+});
+
+test('role limits cap like the school does', () => {
+  const e = effectivePermissions(
+    { feesCollect: true, salaryView: true, reportsView: true, homework: false },
+    { salaryView: false },
+    { reportsView: false, salaryView: false, homework: false },
+  );
+  assert.deepEqual(e.permissions, { feesCollect: true, salaryView: false, reportsView: false, homework: false });
+  assert.deepEqual(e.blockedBySchool, ['salaryView']);
+  assert.deepEqual(e.blockedByRoleLimit, ['salaryView', 'reportsView']);
+});
+
+test('super admin role param also takes ADMIN', () => {
+  const schoolId = '3f1c2a4e-8b7d-4c1a-9e2f-1a2b3c4d5e6f';
+  assert.equal(schoolRoleParamSchema.parse({ schoolId, roleId: 'admin' }).roleId, 'ADMIN');
+  assert.equal(schoolRoleParamSchema.parse({ schoolId, roleId: 'TEACHER' }).roleId, 'TEACHER');
+  assert.equal(roleIdParamSchema.safeParse({ roleId: 'ADMIN' }).success, false);
 });

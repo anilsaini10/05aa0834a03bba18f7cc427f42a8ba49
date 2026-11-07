@@ -13,12 +13,14 @@ export interface LoginInput {
   password:   string;
   role:       Role;
   schoolId?:  string;
+  customRoleId?: string;
 }
 
 export interface SendLoginOtpInput {
   phone:     string;
   role:      Role;
   schoolId?: string;
+  customRoleId?: string;
 }
 
 export interface VerifyLoginOtpInput extends SendLoginOtpInput {

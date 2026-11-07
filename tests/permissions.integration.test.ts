@@ -91,7 +91,7 @@ test('admin reads school permissions and sets a role\'s', { skip: !enabled }, as
 
   const put = await call('PUT', `/admin/permissions/roles/${ids.role}`, t.a, { permissions: { feesCollect: true, reportsView: true, receiptPrint: true } });
   assert.equal(put.status, 200);
-  assert.deepEqual(put.body.data.role, { id: ids.role, key: 'ACCOUNTANT', name: 'Accountant' });
+  assert.deepEqual(put.body.data.role, { id: ids.role, key: 'ACCOUNTANT', name: 'Accountant', isBuiltIn: false });
 
   const patch = await call('PATCH', `/admin/permissions/roles/${ids.role}`, t.a, { permissions: { receiptPrint: null, salaryView: true } });
   assert.deepEqual(patch.body.data.permissions, { feesCollect: true, reportsView: true, salaryView: true });
@@ -104,7 +104,7 @@ test('admin reads school permissions and sets a role\'s', { skip: !enabled }, as
   assert.deepEqual(role.body.data.blockedBySchool, ['salaryView']);
 
   const matrix = await call('GET', '/admin/permissions/roles', t.a);
-  assert.equal(matrix.body.data.roles.length, 1);
+  assert.deepEqual(matrix.body.data.roles.map((r: any) => r.role.key), ['TEACHER', 'PARENT', 'ACCOUNTANT']);
   assert.equal(matrix.body.data.schoolPermissions.salaryView, false);
 });
 
@@ -112,7 +112,7 @@ test('role permissions are per school', { skip: !enabled }, async () => {
   const b = await call('GET', `/admin/permissions/roles/${ids.role}`, t.b);
   assert.deepEqual(b.body.data.permissions, {});
   const sa = await call('GET', `/super-admin/schools/${ids.a}/role-permissions`, t.sa);
-  assert.equal(sa.body.data.roles[0].permissions.feesCollect, true);
+  assert.equal(sa.body.data.roles.find((r: any) => r.role.key === 'ACCOUNTANT').permissions.feesCollect, true);
 });
 
 test('each user gets their own effective permissions', { skip: !enabled }, async () => {
@@ -122,12 +122,77 @@ test('each user gets their own effective permissions', { skip: !enabled }, async
   assert.deepEqual(staff.body.data.blockedBySchool, ['salaryView']);
 
   const teacher = await call('GET', '/auth/permissions', t.teacher);
-  assert.equal(teacher.body.data.permissions.feesCollect, true);           // school-level
-  assert.equal(teacher.body.data.rolePermissions, null);
+  assert.deepEqual(teacher.body.data.permissions, {});                     // nothing given to TEACHER yet
+  assert.equal(teacher.body.data.customRole, null);
+
+  const admin = await call('GET', '/auth/permissions', t.a);
+  assert.equal(admin.body.data.permissions.feesCollect, true);             // school-level
+  assert.equal(admin.body.data.rolePermissions, null);
 
   assert.equal((await call('GET', '/auth/permissions', t.sa)).body.data.isSuperAdmin, true);
   assert.equal((await call('GET', '/auth/permissions')).status, 401);
   assert.equal((await call('PUT', `/admin/permissions/roles/${ids.role}`, t.staff, { permissions: {} })).status, 403);
+});
+
+test('admin sets TEACHER / PARENT permissions by name', { skip: !enabled }, async () => {
+  const put = await call('PUT', '/admin/permissions/roles/teacher', t.a, { permissions: { attendanceMark: true, salaryView: true } });
+  assert.equal(put.status, 200);
+  assert.deepEqual(put.body.data.role, { id: 'TEACHER', key: 'TEACHER', name: 'Teacher', isBuiltIn: true });
+  assert.deepEqual(put.body.data.blockedBySchool, ['salaryView']);
+
+  const patch = await call('PATCH', '/admin/permissions/roles/TEACHER', t.a, { permissions: { salaryView: null, homeworkAssign: true } });
+  assert.deepEqual(patch.body.data.permissions, { attendanceMark: true, homeworkAssign: true });
+
+  const teacher = await call('GET', '/auth/permissions', t.teacher);
+  assert.deepEqual(teacher.body.data.permissions, { attendanceMark: true, homeworkAssign: true });
+  assert.deepEqual(teacher.body.data.rolePermissions, { attendanceMark: true, homeworkAssign: true });
+
+  // Per school, and PARENT is separate from TEACHER.
+  assert.deepEqual((await call('GET', '/admin/permissions/roles/TEACHER', t.b)).body.data.permissions, {});
+  assert.deepEqual((await call('GET', '/admin/permissions/roles/PARENT', t.a)).body.data.permissions, {});
+
+  assert.equal((await call('GET', '/admin/permissions/roles/ADMIN', t.a)).status, 400);
+});
+
+test('super admin caps each role per school', { skip: !enabled }, async () => {
+  // Role list for the super admin: ADMIN first.
+  const list = await call('GET', `/super-admin/schools/${ids.a}/role-permissions`, t.sa);
+  assert.deepEqual(list.body.data.roles.map((r: any) => r.role.key), ['ADMIN', 'TEACHER', 'PARENT', 'ACCOUNTANT']);
+
+  // TEACHER: switch homeworkAssign off → teacher loses it, admin's saved value stays.
+  const put = await call('PUT', `/super-admin/schools/${ids.a}/role-permissions/teacher`, t.sa, { permissions: { homeworkAssign: false } });
+  assert.equal(put.status, 200);
+  assert.deepEqual(put.body.data.limits, { homeworkAssign: false });
+  assert.deepEqual(put.body.data.blockedByRoleLimit, ['homeworkAssign']);
+  assert.equal(put.body.data.permissions.homeworkAssign, true);
+
+  const teacher = await call('GET', '/auth/permissions', t.teacher);
+  assert.deepEqual(teacher.body.data.permissions, { attendanceMark: true, homeworkAssign: false });
+  assert.deepEqual(teacher.body.data.blockedByRoleLimit, ['homeworkAssign']);
+
+  // Admin sees the cap on their own screen.
+  const adminView = await call('GET', '/admin/permissions/roles/TEACHER', t.a);
+  assert.deepEqual(adminView.body.data.limits, { homeworkAssign: false });
+
+  // PATCH null removes the cap; only school A affected.
+  await call('PATCH', `/super-admin/schools/${ids.a}/role-permissions/TEACHER`, t.sa, { permissions: { homeworkAssign: null } });
+  assert.equal((await call('GET', '/auth/permissions', t.teacher)).body.data.permissions.homeworkAssign, true);
+
+  // Custom role by id.
+  const acc = await call('PATCH', `/super-admin/schools/${ids.a}/role-permissions/${ids.role}`, t.sa, { permissions: { feesCollect: false } });
+  assert.deepEqual(acc.body.data.blockedByRoleLimit, ['feesCollect']);
+  assert.equal((await call('GET', '/auth/permissions', t.staff)).body.data.permissions.feesCollect, false);
+  await call('PATCH', `/super-admin/schools/${ids.a}/role-permissions/${ids.role}`, t.sa, { permissions: { feesCollect: null } });
+
+  // ADMIN = the school's permissions.
+  const admin = await call('PATCH', `/super-admin/schools/${ids.a}/role-permissions/ADMIN`, t.sa, { permissions: { smsSend: true } });
+  assert.equal(admin.body.data.role.key, 'ADMIN');
+  assert.equal((await call('GET', `/super-admin/schools/${ids.a}/permissions`, t.sa)).body.data.permissions.smsSend, true);
+
+  // Guards.
+  assert.equal((await call('PUT', `/super-admin/schools/${ids.a}/role-permissions/TEACHER`, t.a, { permissions: {} })).status, 403);
+  const missing = await call('PUT', '/super-admin/schools/00000000-0000-4000-8000-000000000000/role-permissions/TEACHER', t.sa, { permissions: {} });
+  assert.equal(missing.body.error.code, 'SCHOOL_NOT_FOUND');
 });
 
 test('inactive role can\'t be configured', { skip: !enabled }, async () => {

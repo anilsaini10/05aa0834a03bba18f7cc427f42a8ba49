@@ -55,7 +55,26 @@ export const patchPermissionsSchema = z.object({
 });
 
 export const schoolIdParamSchema = z.object({ schoolId: z.string().uuid('Invalid school id') });
-export const roleIdParamSchema   = z.object({ roleId: z.string().uuid('Invalid role id') });
+
+// Built-in roles the school admin sets permissions for, addressed by name
+// in place of a custom role's id: /admin/permissions/roles/TEACHER.
+export const BUILT_IN_PERMISSION_ROLES = ['TEACHER', 'PARENT'] as const;
+export type BuiltInPermissionRole = typeof BUILT_IN_PERMISSION_ROLES[number];
+export const isBuiltInPermissionRole = (v: string): v is BuiltInPermissionRole =>
+  (BUILT_IN_PERMISSION_ROLES as readonly string[]).includes(v);
+
+const roleIdField = (builtIns: readonly string[]) => z.string()
+  .transform(v => (builtIns.includes(v.toUpperCase()) ? v.toUpperCase() : v))
+  .refine(v => builtIns.includes(v) || z.string().uuid().safeParse(v).success,
+    `Invalid role id — use a custom role's id or one of ${builtIns.join(', ')}`);
+
+export const roleIdParamSchema = z.object({ roleId: roleIdField(BUILT_IN_PERMISSION_ROLES) });
+
+// Super admin also addresses ADMIN, whose cap is the school's permissions.
+export const schoolRoleParamSchema = z.object({
+  schoolId: z.string().uuid('Invalid school id'),
+  roleId:   roleIdField(['ADMIN', ...BUILT_IN_PERMISSION_ROLES]),
+});
 
 export type PermissionValue           = z.infer<typeof value>;
 export type Permissions               = Record<string, PermissionValue>;

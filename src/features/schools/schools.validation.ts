@@ -4,4 +4,6 @@ export const searchSchoolsSchema = z.object({
   search: z.string().trim().min(1).max(150).optional(),
 });
 
+export const schoolIdParamSchema = z.object({ schoolId: z.string().uuid('Invalid school id') });
+
 export type SearchSchoolsSchema = z.infer<typeof searchSchoolsSchema>;

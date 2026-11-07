@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getSchoolPermissionsHandler, replaceSchoolPermissionsHandler, patchSchoolPermissionsHandler, getSchoolRolePermissionsHandler,
+  getSchoolRoleLimitsHandler, replaceSchoolRoleLimitsHandler, patchSchoolRoleLimitsHandler,
   getMySchoolPermissionsHandler, listRolePermissionsHandler, getRolePermissionsHandler,
   replaceRolePermissionsHandler, patchRolePermissionsHandler, getMyPermissionsHandler,
 } from './permissions.controller';
@@ -18,6 +19,10 @@ superAdminSchoolPermissionsRouter.get('/permissions',       ...superAdmin, getSc
 superAdminSchoolPermissionsRouter.put('/permissions',       ...superAdmin, replaceSchoolPermissionsHandler);
 superAdminSchoolPermissionsRouter.patch('/permissions',     ...superAdmin, patchSchoolPermissionsHandler);
 superAdminSchoolPermissionsRouter.get('/role-permissions',  ...superAdmin, getSchoolRolePermissionsHandler);
+// Per-role limits; :roleId is ADMIN / TEACHER / PARENT or a custom role's id.
+superAdminSchoolPermissionsRouter.get('/role-permissions/:roleId',   ...superAdmin, getSchoolRoleLimitsHandler);
+superAdminSchoolPermissionsRouter.put('/role-permissions/:roleId',   ...superAdmin, replaceSchoolRoleLimitsHandler);
+superAdminSchoolPermissionsRouter.patch('/role-permissions/:roleId', ...superAdmin, patchSchoolRoleLimitsHandler);
 
 // ── School ADMIN: own school (read-only) + per-role permissions ─
 // Mounted at /api/admin/permissions.
