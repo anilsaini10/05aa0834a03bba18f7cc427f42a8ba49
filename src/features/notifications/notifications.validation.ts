@@ -27,7 +27,14 @@ export const listNotificationsQuerySchema = z.object({
   type:     z.string().trim().min(1).optional(),
 });
 
-export type RegisterTokenSchema        = z.infer<typeof registerTokenSchema>;
-export type UnregisterTokenSchema      = z.infer<typeof unregisterTokenSchema>;
-export type SendNotificationSchema     = z.infer<typeof sendNotificationSchema>;
-export type ListNotificationsQuerySchema = z.infer<typeof listNotificationsQuerySchema>;
+export const sendTargetedNotificationSchema = z.object({
+  studentIds:  z.array(z.string().uuid('Invalid student id')).min(1, 'At least one student is required'),
+  title:       z.string().min(1, 'Title is required').max(200),
+  description: z.string().min(1, 'Description is required').max(2000),
+});
+
+export type RegisterTokenSchema              = z.infer<typeof registerTokenSchema>;
+export type UnregisterTokenSchema            = z.infer<typeof unregisterTokenSchema>;
+export type SendNotificationSchema           = z.infer<typeof sendNotificationSchema>;
+export type SendTargetedNotificationSchema   = z.infer<typeof sendTargetedNotificationSchema>;
+export type ListNotificationsQuerySchema     = z.infer<typeof listNotificationsQuerySchema>;

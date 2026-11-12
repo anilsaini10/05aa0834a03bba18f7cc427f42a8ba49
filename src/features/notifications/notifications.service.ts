@@ -261,3 +261,89 @@ export const markAllNotificationsRead = async (userId: string): Promise<{ update
   });
   return { updated: result.count };
 };
+
+// ════════════════════════════════════════════════════════════
+// Targeted notification — admin/staff selects students,
+// notification goes to each student's parent.
+// ════════════════════════════════════════════════════════════
+
+export const sendTargetedNotification = async (
+  schoolId:   string,
+  studentIds: string[],
+  title:      string,
+  description: string,
+) => {
+
+  const students = await prisma.student.findMany({
+    where:  { id: { in: studentIds }, schoolId },
+    select: { id: true, parentUserId: true, name: true },
+  });
+
+  if (students.length === 0) {
+    const err = new Error('No valid students found in your school') as any;
+    err.code       = 'NO_STUDENTS_FOUND';
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const uniqueParentIds = [...new Set(students.map(s => s.parentUserId))];
+
+  const payload: PushPayload = {
+    title,
+    body: description,
+    data: { type: NOTIFICATION_TYPE.TARGETED },
+  };
+
+  await persistNotifications(uniqueParentIds, payload);
+
+  let pushSuccessCount = 0;
+  let pushFailureCount = 0;
+  let deviceTokenCount = 0;
+  let firebaseReady    = isFirebaseReady();
+
+  if (firebaseReady) {
+    const deviceTokens = await prisma.deviceToken.findMany({
+      where:  { userId: { in: uniqueParentIds } },
+      select: { token: true },
+    });
+
+    deviceTokenCount = deviceTokens.length;
+
+    if (deviceTokens.length > 0) {
+      const tokens = deviceTokens.map(d => d.token);
+      const staleTokens: string[] = [];
+
+      for (let i = 0; i < tokens.length; i += FCM_BATCH_SIZE) {
+        const batch = tokens.slice(i, i + FCM_BATCH_SIZE);
+        const response = await getMessaging().sendEachForMulticast({
+          tokens:       batch,
+          notification: { title, body: description },
+          data:         payload.data,
+        });
+        pushSuccessCount += response.successCount;
+        pushFailureCount += response.failureCount;
+        response.responses.forEach((r: { success: boolean; error?: { code?: string } }, idx: number) => {
+          if (!r.success && r.error?.code === 'messaging/registration-token-not-registered') {
+            staleTokens.push(batch[idx]);
+          }
+        });
+      }
+
+      if (staleTokens.length) {
+        await prisma.deviceToken.deleteMany({ where: { token: { in: staleTokens } } });
+      }
+    }
+  }
+
+  return {
+    studentCount:   students.length,
+    parentCount:    uniqueParentIds.length,
+    notificationsSaved: uniqueParentIds.length,
+    push: {
+      firebaseReady,
+      deviceTokenCount,
+      successCount: pushSuccessCount,
+      failureCount: pushFailureCount,
+    },
+  };
+};

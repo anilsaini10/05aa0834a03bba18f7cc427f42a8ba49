@@ -124,6 +124,7 @@ model User {
   // number or email at login (see shared/utils/username.ts).
   username     String?  @unique
   passwordHash String
+  profilePhoto String?
   role         Role
   // Nullable ONLY for SUPER_ADMIN — enforced in app code + a DB CHECK
   // constraint (see migration), since a super admin isn't scoped to a school.
@@ -176,6 +177,7 @@ model User {
   syllabusPlansCreated           SyllabusPlan[]                @relation("SyllabusPlanCreatedBy")
   progressHistoryUpdated         ChapterProgressHistory[]      @relation("ProgressHistoryUpdatedBy")
   progressApprovalsReviewed      ProgressApproval[]            @relation("ProgressApprovalReviewedBy")
+  crashReports                   CrashReport[]
 
   @@index([schoolId])
   @@index([customRoleId])
@@ -1676,4 +1678,35 @@ model ProgressApproval {
 
   @@index([syllabusPlanChapterId, status])
   @@map("progress_approvals")
+}
+
+// ── CrashReport — mobile app crash reports ──────────────────────
+// Sent from the React Native native crash handler. Only SUPER_ADMIN
+// can view these; any authenticated user's device can submit.
+model CrashReport {
+  id             String   @id @default(uuid())
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Device & app context
+  appVersion     String?
+  buildNumber    String?
+  platform       Platform?
+  osVersion      String?
+  deviceModel    String?
+  // Crash details
+  errorMessage   String
+  stackTrace     String?
+  errorType      String?
+  isFatal        Boolean  @default(true)
+  // When the crash actually happened on the device (client clock).
+  // May differ from createdAt if the report was queued offline.
+  crashedAt      DateTime?
+  // Extra context the client sends (screen name, route, custom data…)
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([platform])
+  @@map("crash_reports")
 }

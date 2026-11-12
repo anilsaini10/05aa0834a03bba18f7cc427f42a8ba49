@@ -42,14 +42,15 @@ export interface AuthTokens {
 }
 
 export interface UserPublic {
-  id:         string;
-  name:       string;
-  email:      string;
-  username:   string | null;
-  phone:      string | null;
-  role:       Role;
+  id:           string;
+  name:         string;
+  email:        string;
+  username:     string | null;
+  phone:        string | null;
+  role:         Role;
   // Set when role is STAFF — the super-admin-defined role.
-  customRole: { id: string; key: string; name: string } | null;
-  schoolId:   string | null;
-  schoolName: string | null;
+  customRole:   { id: string; key: string; name: string } | null;
+  schoolId:     string | null;
+  schoolName:   string | null;
+  profilePhoto: string | null;
 }

@@ -13,3 +13,4 @@ dist/
 *-firebase-*.json
 firebase-service-account.json
 ariseapp-*.json
+.neon
