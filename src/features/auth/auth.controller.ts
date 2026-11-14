@@ -5,7 +5,7 @@ import {
   forgotPasswordSchema, resetPasswordConfirmSchema,
   sendLoginOtpSchema, verifyLoginOtpSchema,
 } from './auth.validation';
-import { sendSuccess } from '../../shared/utils/apiResponse';
+import { sendSuccess, sendError } from '../../shared/utils/apiResponse';
 
 // ── POST /auth/signup ─────────────────────────────────────────
 export const signupHandler = async (
@@ -168,6 +168,27 @@ export const meHandler = async (
 ): Promise<void> => {
   try {
     sendSuccess(res, { user: (req as any).user });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /auth/profile-photo ─────────────────────────────────
+export const updateProfilePhotoHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.file) {
+      sendError(res, 'Image file is required', 'FILE_REQUIRED', 400);
+      return;
+    }
+    const user = await authService.updateProfilePhoto(
+      (req as any).user.sub,
+      req.file,
+    );
+    sendSuccess(res, { user });
   } catch (err) {
     next(err);
   }

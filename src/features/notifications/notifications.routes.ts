@@ -3,6 +3,7 @@ import {
   registerHandler,
   unregisterHandler,
   sendHandler,
+  sendTargetedHandler,
   listMyNotificationsHandler,
   getUnreadCountHandler,
   markNotificationReadHandler,
@@ -15,7 +16,8 @@ const router = Router();
 
 router.post('/register',   authGuard, registerHandler);
 router.post('/unregister', authGuard, unregisterHandler);
-router.post('/send',       authGuard, roleGuard('ADMIN'), sendHandler);
+router.post('/send',            authGuard, roleGuard('ADMIN'), sendHandler);
+router.post('/send-targeted',   authGuard, roleGuard('ADMIN', 'STAFF'), sendTargetedHandler);
 
 // In-app inbox — any authenticated role reads/manages only their own.
 router.get('/',             authGuard, listMyNotificationsHandler);

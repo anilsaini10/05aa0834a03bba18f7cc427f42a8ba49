@@ -8,6 +8,7 @@ import { toE164, normalizePhone } from '../../shared/utils/phone';
 import { looksLikeUsername, assertUsernameAvailable } from '../../shared/utils/username';
 import { env } from '../../config/env';
 import { changeOwnPassword } from '../../shared/services/account.service';
+import { uploadFile } from '../../config/storage';
 import {
   signAccessToken,
   signRefreshToken,
@@ -28,15 +29,16 @@ const CUSTOM_ROLE_SELECT = { select: { id: true, key: true, name: true, isActive
 
 // ── Helper — strip password ───────────────────────────────────
 const toPublic = (user: SessionUser, schoolName: string | null): UserPublic => ({
-  id:         user.id,
-  name:       user.name,
-  email:      user.email,
-  username:   user.username,
-  phone:      user.phone,
-  role:       user.role,
-  customRole: user.customRole ? { id: user.customRole.id, key: user.customRole.key, name: user.customRole.name } : null,
-  schoolId:   user.schoolId,
+  id:           user.id,
+  name:         user.name,
+  email:        user.email,
+  username:     user.username,
+  phone:        user.phone,
+  role:         user.role,
+  customRole:   user.customRole ? { id: user.customRole.id, key: user.customRole.key, name: user.customRole.name } : null,
+  schoolId:     user.schoolId,
   schoolName,
+  profilePhoto: user.profilePhoto,
 });
 
 // ── Build JWT payload ─────────────────────────────────────────
@@ -520,4 +522,20 @@ export const confirmPasswordReset = async (
     prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
     prisma.passwordResetToken.update({ where: { id: matched.id }, data: { used: true } }),
   ]);
+};
+
+// ── Update profile photo ──────────────────────────────────────
+export const updateProfilePhoto = async (
+  userId: string,
+  file: { buffer: Buffer; originalname: string; mimetype: string },
+): Promise<UserPublic> => {
+  const imageUrl = await uploadFile(file.buffer, file.originalname, file.mimetype);
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data:  { profilePhoto: imageUrl },
+    include: { school: true, customRole: CUSTOM_ROLE_SELECT },
+  });
+
+  return toPublic(user, user.school?.name ?? null);
 };

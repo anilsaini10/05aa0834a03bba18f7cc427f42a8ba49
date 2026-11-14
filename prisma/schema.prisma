@@ -124,6 +124,7 @@ model User {
   // number or email at login (see shared/utils/username.ts).
   username     String?  @unique
   passwordHash String
+  profilePhoto String?
   role         Role
   // Nullable ONLY for SUPER_ADMIN — enforced in app code + a DB CHECK
   // constraint (see migration), since a super admin isn't scoped to a school.
@@ -176,6 +177,11 @@ model User {
   syllabusPlansCreated           SyllabusPlan[]                @relation("SyllabusPlanCreatedBy")
   progressHistoryUpdated         ChapterProgressHistory[]      @relation("ProgressHistoryUpdatedBy")
   progressApprovalsReviewed      ProgressApproval[]            @relation("ProgressApprovalReviewedBy")
+  crashReports                   CrashReport[]
+  promotionBatches               PromotionBatch[]              @relation("PromotionBatchBy")
+  admissionsCreated              Admission[]                   @relation("AdmissionCreatedBy")
+  parentQueriesCreated           ParentQuery[]                 @relation("ParentQueryCreatedBy")
+  parentQueriesReplied           ParentQuery[]                 @relation("ParentQueryRepliedBy")
 
   @@index([schoolId])
   @@index([customRoleId])
@@ -333,6 +339,10 @@ model School {
   payments                 Payment[]
   chapters                 Chapter[]
   syllabusPlans            SyllabusPlan[]
+  academicSessions         AcademicSession[]
+  promotionBatches         PromotionBatch[]
+  admissions               Admission[]
+  parentQueries            ParentQuery[]
 
   @@map("schools")
 }
@@ -730,11 +740,14 @@ model Class {
   attendanceRecords AttendanceRecord[]
   homework          Homework[]
   classSchedules    ClassSchedule[]
-  feeStructures     FeeStructure[]
-  leaveRequests     LeaveRequest[]
-  chapters          Chapter[]
-  syllabusPlans     SyllabusPlan[]
-  createdAt         DateTime           @default(now())
+  feeStructures        FeeStructure[]
+  leaveRequests        LeaveRequest[]
+  chapters             Chapter[]
+  syllabusPlans        SyllabusPlan[]
+  promotionsFrom       PromotionBatch[]   @relation("PromotionFromClass")
+  promotionsTo         PromotionBatch[]   @relation("PromotionToClass")
+  admissions           Admission[]
+  createdAt            DateTime           @default(now())
 
   @@unique([schoolId, name])
   @@map("classes")
@@ -821,6 +834,7 @@ model Student {
   leaveRequests        LeaveRequest[]
   fees                 StudentFee[]
   homeworkSubmissions  HomeworkSubmission[]
+  promotionRecords     PromotionRecord[]
   createdAt            DateTime             @default(now())
 
   @@index([schoolId])
@@ -1676,4 +1690,179 @@ model ProgressApproval {
 
   @@index([syllabusPlanChapterId, status])
   @@map("progress_approvals")
+}
+
+// ── CrashReport — mobile app crash reports ──────────────────────
+// Sent from the React Native native crash handler. Only SUPER_ADMIN
+// can view these; any authenticated user's device can submit.
+model CrashReport {
+  id             String   @id @default(uuid())
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Device & app context
+  appVersion     String?
+  buildNumber    String?
+  platform       Platform?
+  osVersion      String?
+  deviceModel    String?
+  // Crash details
+  errorMessage   String
+  stackTrace     String?
+  errorType      String?
+  isFatal        Boolean  @default(true)
+  // When the crash actually happened on the device (client clock).
+  // May differ from createdAt if the report was queued offline.
+  crashedAt      DateTime?
+  // Extra context the client sends (screen name, route, custom data…)
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([platform])
+  @@map("crash_reports")
+}
+
+// ── AcademicSession — tracks each year's session ─────────────
+// One row per school per year so that promotions, attendance, and
+// fees can be scoped to a session.  The "current" session is the one
+// whose isCurrent flag is true (exactly one per school — enforced
+// at the app layer, not in a partial unique, because Prisma
+// doesn't support filtered uniques).
+model AcademicSession {
+  id        String   @id @default(uuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name      String   // e.g. "2025-26"
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  promotionBatches PromotionBatch[]
+  admissions       Admission[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, isCurrent])
+  @@map("academic_sessions")
+}
+
+// ── PromotionBatch — one admin action that promotes N students ──
+model PromotionBatch {
+  id               String           @id @default(uuid())
+  schoolId         String
+  school           School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSessionId String
+  academicSession  AcademicSession  @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  fromClassId      String
+  fromClass        Class            @relation("PromotionFromClass", fields: [fromClassId], references: [id], onDelete: Restrict)
+  toClassId        String
+  toClass          Class            @relation("PromotionToClass", fields: [toClassId], references: [id], onDelete: Restrict)
+  promotedCount    Int
+  status           String           @default("COMPLETED") // COMPLETED | ROLLED_BACK
+  promotedBy       String
+  promotedByUser   User             @relation("PromotionBatchBy", fields: [promotedBy], references: [id], onDelete: Restrict)
+  rolledBackAt     DateTime?
+  createdAt        DateTime         @default(now())
+
+  records PromotionRecord[]
+
+  @@index([schoolId, createdAt(sort: Desc)])
+  @@map("promotion_batches")
+}
+
+// ── PromotionRecord — per-student snapshot of the move ──────────
+// Stores the old class/section/rollNo so rollback can restore them.
+model PromotionRecord {
+  id              String         @id @default(uuid())
+  batchId         String
+  batch           PromotionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student        @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  fromClassId     String
+  fromSectionId   String
+  fromRollNo      Int
+  toClassId       String
+  toSectionId     String
+  toRollNo        Int
+
+  @@unique([batchId, studentId])
+  @@map("promotion_records")
+}
+
+// ── Admission — inquiry → application → approved → enrolled ────
+enum AdmissionStatus {
+  INQUIRY
+  APPLIED
+  APPROVED
+  ENROLLED
+  REJECTED
+  WITHDRAWN
+}
+
+model Admission {
+  id                String           @id @default(uuid())
+  schoolId          String
+  school            School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSessionId String?
+  academicSession   AcademicSession? @relation(fields: [academicSessionId], references: [id], onDelete: SetNull)
+  // Application number — auto-generated, e.g. "APP0001"
+  applicationNo     String
+  // Student details (not linked to Student table until enrolled)
+  studentName       String
+  gender            Gender
+  dateOfBirth       DateTime
+  classId           String
+  class             Class            @relation(fields: [classId], references: [id], onDelete: Restrict)
+  // Parent details
+  parentName        String
+  parentPhone       String
+  parentEmail       String
+  // Additional info
+  previousSchool    String?
+  address           String?
+  bloodGroup        String?
+  // Workflow
+  status            AdmissionStatus  @default(INQUIRY)
+  remarks           String?
+  // Set when status = ENROLLED
+  enrolledStudentId String?
+  // Tracking
+  createdBy         String
+  createdByUser     User             @relation("AdmissionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([schoolId, status])
+  @@index([schoolId, createdAt(sort: Desc)])
+  @@map("admissions")
+}
+
+// ── ParentQuery — parents ask school admin/principal directly ──
+enum ParentQueryStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model ParentQuery {
+  id            String            @id @default(uuid())
+  schoolId      String
+  school        School            @relation(fields: [schoolId], references: [id])
+  createdBy     String
+  createdByUser User              @relation("ParentQueryCreatedBy", fields: [createdBy], references: [id])
+  subject       String
+  message       String
+  status        ParentQueryStatus @default(OPEN)
+  reply         String?
+  repliedAt     DateTime?
+  repliedBy     String?
+  repliedByUser User?             @relation("ParentQueryRepliedBy", fields: [repliedBy], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([schoolId, createdBy, createdAt(sort: Desc)])
+  @@index([schoolId, status, createdAt(sort: Desc)])
+  @@map("parent_queries")
 }

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as notificationsService from './notifications.service';
 import {
   registerTokenSchema, unregisterTokenSchema, sendNotificationSchema,
-  listNotificationsQuerySchema,
+  sendTargetedNotificationSchema, listNotificationsQuerySchema,
 } from './notifications.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -46,6 +46,30 @@ export const sendHandler = async (
   try {
     const { userId, title, body, data } = sendNotificationSchema.parse(req.body);
     const result = await notificationsService.sendToUser(userId, { title, body, data });
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /notifications/send-targeted ────────────────────────────
+export const sendTargetedHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { studentIds, title, description } = sendTargetedNotificationSchema.parse(req.body);
+    const schoolId = (req as any).user.schoolId;
+
+    if (!schoolId) {
+      sendSuccess(res, { error: 'School context required' });
+      return;
+    }
+
+    const result = await notificationsService.sendTargetedNotification(
+      schoolId, studentIds, title, description,
+    );
     sendSuccess(res, result);
   } catch (err) {
     next(err);

@@ -19,6 +19,11 @@ const envSchema = z.object({
   SMS_PROVIDER:        z.enum(['console']).default('console'),
   RAZORPAY_KEY_ID:     z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
+  AWS_ACCESS_KEY_ID:       z.string().optional(),
+  AWS_SECRET_ACCESS_KEY:   z.string().optional(),
+  AWS_ENDPOINT_URL_S3:     z.string().optional(),
+  AWS_REGION:              z.string().optional(),
+  BUCKET_UPLOADS:          z.string().default('uploads'),
 });
 
 const parsed = envSchema.safeParse(process.env);

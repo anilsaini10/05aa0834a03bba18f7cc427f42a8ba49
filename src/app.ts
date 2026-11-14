@@ -36,8 +36,13 @@ import adminSyllabusRoutes from './features/admin/syllabus/syllabus.routes';
 import { teacherSyllabusRouter } from './features/teacher/teacherSyllabus.routes';
 import { parentSyllabusRouter } from './features/students/parentSyllabus.routes';
 import { adminFeesRouter, parentFeesRouter } from './features/admin/fees/fees.routes';
+import academicSessionRoutes from './features/admin/academicSessions/academicSessions.routes';
+import promotionRoutes       from './features/admin/promotions/promotions.routes';
+import admissionRoutes       from './features/admin/admissions/admissions.routes';
 import { adminSalaryRouter, teacherSalaryRouter } from './features/admin/salary/salary.routes';
 import { publicRolesRouter, publicSchoolsRouter, superAdminRoleDisplayRouter, adminRoleDisplayRouter } from './features/roleDisplay/roleDisplay.routes';
+import { crashReportSubmitRouter, superAdminCrashReportsRouter } from './features/crashReports/crashReports.routes';
+import { parentQueryRouter, adminParentQueryRouter } from './features/parentQueries/parentQueries.routes';
 
 // ── Middleware ────────────────────────────────────────────────
 import { errorHandler } from './middleware/errorHandler';
@@ -102,10 +107,15 @@ app.use('/api/teacher', teacherSelfRoutes);
 app.use('/api/students', studentSelfRoutes);
 app.use('/api/admin/academic-calendar', adminCalendarRouter);
 app.use('/api/admin/syllabus', adminSyllabusRoutes);
+app.use('/api/admin/academic-sessions', academicSessionRoutes);
+app.use('/api/admin/promotions', promotionRoutes);
+app.use('/api/admin/admissions', admissionRoutes);
 app.use('/api/teacher/academic-calendar', teacherCalendarRouter);
 app.use('/api/teacher/syllabus', teacherSyllabusRouter);
 app.use('/api/students/academic-calendar', parentCalendarRouter);
 app.use('/api/students/syllabus', parentSyllabusRouter);
+app.use('/api/students/parent-queries', parentQueryRouter);
+app.use('/api/admin/parent-queries', adminParentQueryRouter);
 app.use('/api/support', supportRouter);
 app.use('/api/admin/support', supportRouter);
 app.use('/api/super-admin/support', superAdminSupportRouter);
@@ -116,7 +126,9 @@ app.use('/api/super-admin/subscription', superAdminSubscriptionRouter);
 app.use('/api/super-admin/roles', superAdminRolesRouter);
 app.use('/api/super-admin/role-display', superAdminRoleDisplayRouter);
 app.use('/api/super-admin/schools/:schoolId', superAdminSchoolPermissionsRouter);
+app.use('/api/super-admin/crash-reports', superAdminCrashReportsRouter);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/crash-reports', crashReportSubmitRouter);
 
 // ── 404 handler ───────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
