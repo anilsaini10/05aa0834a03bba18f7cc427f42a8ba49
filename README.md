@@ -1,4 +1,4 @@
-# FieldBook Backend API
+# Arise Backend API
 
 Node.js · Express · TypeScript · PostgreSQL · Prisma · JWT · Zod
 
