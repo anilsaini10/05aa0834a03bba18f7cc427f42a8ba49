@@ -392,9 +392,8 @@ export const refresh = async (
 ): Promise<{ accessToken: string }> => {
 
   // Verify signature first
-  let payload: any;
   try {
-    payload = verifyRefreshToken(token);
+    verifyRefreshToken(token);
   } catch {
     const err = new Error('Invalid or expired refresh token') as any;
     err.code       = 'INVALID_REFRESH_TOKEN';

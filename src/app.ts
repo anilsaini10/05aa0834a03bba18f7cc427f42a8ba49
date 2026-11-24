@@ -43,6 +43,7 @@ import { adminSalaryRouter, teacherSalaryRouter } from './features/admin/salary/
 import { publicRolesRouter, publicSchoolsRouter, superAdminRoleDisplayRouter, adminRoleDisplayRouter } from './features/roleDisplay/roleDisplay.routes';
 import { crashReportSubmitRouter, superAdminCrashReportsRouter } from './features/crashReports/crashReports.routes';
 import { parentQueryRouter, adminParentQueryRouter } from './features/parentQueries/parentQueries.routes';
+import publicDirectoryRoutes from './features/publicDirectory/publicDirectory.routes';
 
 // ── Middleware ────────────────────────────────────────────────
 import { errorHandler } from './middleware/errorHandler';
@@ -129,6 +130,7 @@ app.use('/api/super-admin/schools/:schoolId', superAdminSchoolPermissionsRouter)
 app.use('/api/super-admin/crash-reports', superAdminCrashReportsRouter);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/crash-reports', crashReportSubmitRouter);
+app.use('/api/public/schools', publicDirectoryRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
