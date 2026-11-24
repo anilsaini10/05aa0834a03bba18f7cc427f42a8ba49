@@ -303,7 +303,7 @@ export const setAdminStatus = async (
   adminId: string,
   isActive: boolean,
 ): Promise<AdminResponse> => {
-  const admin = await findAdminInSchool(schoolId, adminId);
+  await findAdminInSchool(schoolId, adminId);
 
   const [updated] = await prisma.$transaction([
     prisma.user.update({ where: { id: adminId }, data: { isActive } }),

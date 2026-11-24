@@ -5,8 +5,6 @@ const DAY_MS = 86_400_000;
 const toDay  = (d: Date) => d.toISOString().slice(0, 10);
 const atDay  = (s: string) => new Date(`${s}T00:00:00.000Z`);
 
-const CLOSED = new Set<string>(SCHOOL_CLOSED_EVENT_TYPES);
-
 export const getSchoolClosedDates = async (
   schoolId: string,
   from: Date,
