@@ -9,6 +9,9 @@ import { looksLikeUsername, assertUsernameAvailable } from '../../shared/utils/u
 import { env } from '../../config/env';
 import { changeOwnPassword } from '../../shared/services/account.service';
 import { uploadFile } from '../../config/storage';
+import { notifyUser } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPE } from '../../constants';
+import { addInterval } from '../../shared/utils/subscriptionStatus';
 import {
   signAccessToken,
   signRefreshToken,
@@ -97,6 +100,71 @@ const issueSession = async (
   };
 };
 
+const FREE_TRIAL_PLAN_CODE = 'FREE_TRIAL';
+const FREE_TRIAL_MONTHS    = 1;
+
+// ── Grant a 1-month free trial subscription on self-signup ───────
+const grantFreeTrial = async (schoolId: string, userId: string) => {
+  const plan = await prisma.subscriptionPlan.findUnique({
+    where:   { code: FREE_TRIAL_PLAN_CODE },
+    include: { prices: { where: { isActive: true }, take: 1 } },
+  });
+  if (!plan || !plan.isActive || plan.prices.length === 0) return;
+
+  const price     = plan.prices[0];
+  const now       = new Date();
+  const startDate = now;
+  const endDate   = addInterval(startDate, 'MONTH', FREE_TRIAL_MONTHS);
+
+  await prisma.subscription.create({
+    data: {
+      subscriberType: 'SCHOOL',
+      schoolId,
+      role:          'ADMIN',
+      paidByUserId:  userId,
+      planId:        plan.id,
+      planPriceId:   price.id,
+      amount:        0,
+      currency:      price.currency,
+      intervalUnit:  'MONTH',
+      intervalCount: FREE_TRIAL_MONTHS,
+      status:        'ACTIVE',
+      startDate,
+      endDate,
+      activatedAt:   now,
+      note:          'Auto-granted free trial on self-signup',
+      payments: {
+        create: {
+          userId,
+          schoolId,
+          amount:   0,
+          currency: price.currency,
+          status:   'SUCCESS',
+          gateway:  'MANUAL',
+          paidAt:   now,
+          reference: 'Free trial — self-signup',
+        },
+      },
+    },
+  });
+};
+
+// ── Notify all super admins about a new school signup ────────────
+const notifySuperAdmins = async (schoolName: string, adminName: string) => {
+  const superAdmins = await prisma.user.findMany({
+    where: { role: 'SUPER_ADMIN', isActive: true },
+    select: { id: true },
+  });
+
+  for (const sa of superAdmins) {
+    await notifyUser(sa.id, {
+      title: 'New School Registered',
+      body:  `${schoolName} has signed up. Admin: ${adminName}`,
+      data:  { type: NOTIFICATION_TYPE.SCHOOL_SIGNUP },
+    });
+  }
+};
+
 // ── Signup — ADMIN-only, creates a School too ───────────────────
 export const signup = async (
   input: SignupInput,
@@ -132,6 +200,9 @@ export const signup = async (
 
     return { user, school };
   });
+
+  grantFreeTrial(school.id, user.id).catch(() => {});
+  notifySuperAdmins(school.name, user.name).catch(() => {});
 
   return issueSession(user, school.name);
 };

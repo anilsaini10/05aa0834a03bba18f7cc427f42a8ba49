@@ -80,6 +80,7 @@ export const NOTIFICATION_TYPE = {
   FEE_PAYMENT:           'FEE_PAYMENT',
   SALARY:                'SALARY',
   TARGETED:              'TARGETED',
+  SCHOOL_SIGNUP:         'SCHOOL_SIGNUP',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];
