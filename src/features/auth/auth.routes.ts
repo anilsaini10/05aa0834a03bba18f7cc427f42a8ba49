@@ -4,6 +4,8 @@ import {
   loginHandler,
   sendLoginOtpHandler,
   verifyLoginOtpHandler,
+  sendEmailLoginOtpHandler,
+  verifyEmailLoginOtpHandler,
   refreshHandler,
   logoutHandler,
   meHandler,
@@ -23,6 +25,8 @@ router.post('/signup',  signupHandler);
 router.post('/login',   loginHandler);
 router.post('/login/otp/send',   sendLoginOtpHandler);
 router.post('/login/otp/verify', verifyLoginOtpHandler);
+router.post('/login/email-otp/send',   sendEmailLoginOtpHandler);
+router.post('/login/email-otp/verify', verifyEmailLoginOtpHandler);
 router.post('/refresh', refreshHandler);
 router.post('/logout',  logoutHandler);
 router.get('/me',       authGuard, meHandler);

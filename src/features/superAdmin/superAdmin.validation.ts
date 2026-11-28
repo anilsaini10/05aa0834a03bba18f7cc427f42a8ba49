@@ -121,6 +121,20 @@ export const listAllAdminsQuerySchema = z.object({
   schoolId: z.string().uuid('Invalid school id').optional(),
 });
 
+export const listSchoolUsersQuerySchema = z.object({
+  type:         z.enum(['students', 'staff', 'teachers']),
+  page:         z.coerce.number().int().positive().default(1),
+  pageSize:     z.coerce.number().int().positive().max(100).default(20),
+  search:       z.string().trim().min(1).optional(),
+  classId:      z.string().uuid('Invalid class id').optional(),
+  sectionId:    z.string().uuid('Invalid section id').optional(),
+  status:       z.string().trim().min(1).optional(),
+  subject:      z.string().trim().min(1).optional(),
+  designation:  z.string().trim().min(1).optional(),
+  customRoleId: z.string().uuid('Invalid role id').optional(),
+});
+
+export type ListSchoolUsersQuerySchema = z.infer<typeof listSchoolUsersQuerySchema>;
 export type CreateSchoolSchema      = z.infer<typeof createSchoolSchema>;
 export type UpdateSchoolSchema      = z.infer<typeof updateSchoolSchema>;
 export type CreateAdminSchema       = z.infer<typeof createAdminSchema>;

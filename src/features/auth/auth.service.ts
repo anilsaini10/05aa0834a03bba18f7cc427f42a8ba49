@@ -22,6 +22,7 @@ import {
 import {
   SignupInput, LoginInput, AuthTokens, UserPublic,
   SendLoginOtpInput, VerifyLoginOtpInput,
+  SendEmailLoginOtpInput, VerifyEmailLoginOtpInput,
 } from './auth.types';
 
 type CustomRoleRef = { id: string; key: string; name: string; isActive: boolean };
@@ -448,6 +449,179 @@ export const verifyLoginOtp = async (
   }
 
   // Conditional update so two concurrent verifies can't both consume the same OTP.
+  const consumed = await prisma.loginOtp.updateMany({
+    where: { id: active.id, used: false },
+    data:  { used: true },
+  });
+  if (consumed.count !== 1) throw otpExpired();
+
+  return issueSession(user, user.school?.name ?? null);
+};
+
+// ════════════════════════════════════════════════════════════
+// Login with email + OTP. The OTP is delivered via email (sendMail),
+// reuses the same LoginOtp table as the phone-based flow.
+// ════════════════════════════════════════════════════════════
+
+const EMAIL_LOGIN_OTP_TTL_MS          = 5 * 60 * 1000;
+const EMAIL_LOGIN_OTP_RESEND_AFTER_MS = 60 * 1000;
+const EMAIL_LOGIN_OTP_MAX_PER_HOUR    = 5;
+const EMAIL_LOGIN_OTP_MAX_ATTEMPTS    = 5;
+
+const devEmailOtpLog = (input: SendEmailLoginOtpInput, otp: string): void => {
+  if (env.NODE_ENV === 'production') return;
+  const who = `${input.email} (${input.role}${input.schoolId ? `, school ${input.schoolId}` : ''})`;
+  console.log(`\n🔐 [DEV] Email Login OTP for ${who}: ${otp}  (valid ${EMAIL_LOGIN_OTP_TTL_MS / 60000} min)\n`);
+};
+
+const loginOtpEmailHtml = (name: string, otp: string): string => `
+  <p>Hi ${name},</p>
+  <p>Your login OTP is:</p>
+  <h2 style="letter-spacing: 4px;">${otp}</h2>
+  <p>This code expires in ${EMAIL_LOGIN_OTP_TTL_MS / 60000} minutes. Do not share it with anyone.</p>
+`;
+
+const findEmailOtpLoginUser = async ({ email, role, schoolId, customRoleId }: SendEmailLoginOtpInput) => {
+  const isSchoolScoped = assertSchoolScope(role, schoolId);
+
+  const user = await prisma.user.findFirst({
+    where: {
+      email: { equals: email, mode: 'insensitive' },
+      role,
+      ...(isSchoolScoped ? { schoolId } : {}),
+      ...(customRoleId ? { customRoleId } : {}),
+    },
+    include: { school: true, customRole: CUSTOM_ROLE_SELECT },
+  });
+
+  if (!user) {
+    throw otpError(
+      'This email is not registered. Please check the email or contact your school.',
+      'EMAIL_NOT_REGISTERED', 404,
+    );
+  }
+  if (!user.isActive) {
+    throw otpError(
+      'Your account is inactive. Please contact your school admin.',
+      'ACCOUNT_INACTIVE', 403,
+    );
+  }
+  assertCustomRoleActive(user);
+
+  return user;
+};
+
+// ── Request a login OTP via email ──────────────────────────────
+export const sendEmailLoginOtp = async (
+  input: SendEmailLoginOtpInput,
+): Promise<{ resendAfterSeconds: number; expiresInSeconds: number }> => {
+
+  const user   = await findEmailOtpLoginUser(input);
+  const now    = Date.now();
+  const hourMs = 60 * 60 * 1000;
+
+  const recent = await prisma.loginOtp.findMany({
+    where:   { userId: user.id, createdAt: { gt: new Date(now - hourMs) } },
+    orderBy: { createdAt: 'desc' },
+    select:  { createdAt: true },
+  });
+
+  if (recent.length >= EMAIL_LOGIN_OTP_MAX_PER_HOUR) {
+    const oldest = recent[recent.length - 1].createdAt.getTime();
+    throw otpError(
+      'Too many OTP requests. Please try again later.',
+      'OTP_LIMIT_REACHED', 429,
+      { retryAfterSeconds: Math.ceil((oldest + hourMs - now) / 1000) },
+    );
+  }
+
+  const sinceLastMs = recent[0] ? now - recent[0].createdAt.getTime() : Infinity;
+  if (sinceLastMs < EMAIL_LOGIN_OTP_RESEND_AFTER_MS) {
+    const retryAfterSeconds = Math.ceil((EMAIL_LOGIN_OTP_RESEND_AFTER_MS - sinceLastMs) / 1000);
+    throw otpError(
+      `Please wait ${retryAfterSeconds} seconds before requesting a new OTP.`,
+      'OTP_RESEND_COOLDOWN', 429,
+      { retryAfterSeconds },
+    );
+  }
+
+  const otp      = generateOtp();
+  const codeHash = await hashPassword(otp);
+
+  const [, created] = await prisma.$transaction([
+    prisma.loginOtp.updateMany({ where: { userId: user.id, used: false }, data: { used: true } }),
+    prisma.loginOtp.create({
+      data: {
+        userId:    user.id,
+        codeHash,
+        expiresAt: new Date(now + EMAIL_LOGIN_OTP_TTL_MS),
+      },
+    }),
+  ]);
+
+  devEmailOtpLog(input, otp);
+
+  try {
+    await sendMail(
+      user.email,
+      'Your Arise Login OTP',
+      loginOtpEmailHtml(user.name, otp),
+    );
+  } catch (err) {
+    console.error('sendEmailLoginOtp: failed to send OTP email:', err);
+    await prisma.loginOtp.delete({ where: { id: created.id } });
+    throw otpError(
+      'Could not send OTP right now. Please try again in a moment.',
+      'OTP_SEND_FAILED', 503,
+    );
+  }
+
+  return {
+    resendAfterSeconds: EMAIL_LOGIN_OTP_RESEND_AFTER_MS / 1000,
+    expiresInSeconds:   EMAIL_LOGIN_OTP_TTL_MS / 1000,
+  };
+};
+
+// ── Verify an email login OTP and issue a session ──────────────
+export const verifyEmailLoginOtp = async (
+  input: VerifyEmailLoginOtpInput,
+): Promise<{ user: UserPublic; tokens: AuthTokens }> => {
+
+  const user = await findEmailOtpLoginUser(input);
+
+  const otpExpired = () => otpError(
+    'OTP has expired or is no longer valid. Please request a new OTP.',
+    'OTP_EXPIRED', 400,
+  );
+
+  const active = await prisma.loginOtp.findFirst({
+    where:   { userId: user.id, used: false, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!active) throw otpExpired();
+
+  if (!(await comparePassword(input.otp, active.codeHash))) {
+    const attempts     = active.attempts + 1;
+    const attemptsLeft = EMAIL_LOGIN_OTP_MAX_ATTEMPTS - attempts;
+
+    await prisma.loginOtp.update({
+      where: { id: active.id },
+      data:  { attempts, ...(attemptsLeft <= 0 ? { used: true } : {}) },
+    });
+
+    if (attemptsLeft <= 0) {
+      throw otpError(
+        'Too many incorrect attempts. Please request a new OTP.',
+        'OTP_ATTEMPTS_EXCEEDED', 429,
+      );
+    }
+    throw otpError(
+      `Incorrect OTP. ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left.`,
+      'INVALID_OTP', 400,
+      { attemptsLeft },
+    );
+  }
+
   const consumed = await prisma.loginOtp.updateMany({
     where: { id: active.id, used: false },
     data:  { used: true },

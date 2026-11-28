@@ -11,7 +11,11 @@ import {
   UpdateAdminSchema,
   ListSchoolsQuerySchema,
   ListAllAdminsQuerySchema,
+  ListSchoolUsersQuerySchema,
 } from './superAdmin.validation';
+import { listStudents } from '../admin/students/students.service';
+import { listStaff } from '../admin/staff/staff.service';
+import { listTeachers } from '../admin/teachers/teachers.service';
 
 export interface SchoolResponse {
   id:   string;
@@ -365,6 +369,23 @@ export const listAllAdmins = async (query: ListAllAdminsQuerySchema) => {
     total,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+};
+
+// ── GET /super-admin/schools/:schoolId/users?type= ───────────────────
+export const listSchoolUsers = async (schoolId: string, query: ListSchoolUsersQuerySchema) => {
+  const school = await prisma.school.findUnique({ where: { id: schoolId } });
+  if (!school) throw notFound('School not found', 'SCHOOL_NOT_FOUND');
+
+  const { type, page, pageSize, search, classId, sectionId, status, subject, designation, customRoleId } = query;
+
+  switch (type) {
+    case 'students':
+      return { type, ...(await listStudents(schoolId, { page, pageSize, search, classId, sectionId, status: status as any })) };
+    case 'staff':
+      return { type, ...(await listStaff(schoolId, { page, pageSize, search, designation, customRoleId, status: status as any })) };
+    case 'teachers':
+      return { type, ...(await listTeachers(schoolId, { page, pageSize, search, subject, classId, status: status as any })) };
+  }
 };
 
 // ── POST /super-admin/schools/:schoolId/admins/:adminId/reset-password ─

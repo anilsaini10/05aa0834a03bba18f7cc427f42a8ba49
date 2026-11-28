@@ -27,6 +27,17 @@ export interface VerifyLoginOtpInput extends SendLoginOtpInput {
   otp: string;
 }
 
+export interface SendEmailLoginOtpInput {
+  email:     string;
+  role:      Role;
+  schoolId?: string;
+  customRoleId?: string;
+}
+
+export interface VerifyEmailLoginOtpInput extends SendEmailLoginOtpInput {
+  otp: string;
+}
+
 export interface RefreshInput {
   refreshToken: string;
 }

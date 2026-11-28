@@ -79,6 +79,21 @@ export const verifyLoginOtpSchema = z.object({
   customRoleId: customRoleIdField,
 }).refine(customRoleOnlyForStaff, customRoleOnlyForStaffError);
 
+export const sendEmailLoginOtpSchema = z.object({
+  email:        z.string().email('Invalid email address'),
+  role:         z.nativeEnum(Role),
+  schoolId:     z.string().uuid('Invalid school id').optional(),
+  customRoleId: customRoleIdField,
+}).refine(customRoleOnlyForStaff, customRoleOnlyForStaffError);
+
+export const verifyEmailLoginOtpSchema = z.object({
+  email:        z.string().email('Invalid email address'),
+  otp:          z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
+  role:         z.nativeEnum(Role),
+  schoolId:     z.string().uuid('Invalid school id').optional(),
+  customRoleId: customRoleIdField,
+}).refine(customRoleOnlyForStaff, customRoleOnlyForStaffError);
+
 export type SignupSchema               = z.infer<typeof signupSchema>;
 export type LoginSchema                = z.infer<typeof loginSchema>;
 export type UpdateUsernameSchema       = z.infer<typeof updateUsernameSchema>;
@@ -87,5 +102,7 @@ export type LogoutSchema               = z.infer<typeof logoutSchema>;
 export type ResetPasswordSchema        = z.infer<typeof resetPasswordSchema>;
 export type ForgotPasswordSchema       = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordConfirmSchema = z.infer<typeof resetPasswordConfirmSchema>;
-export type SendLoginOtpSchema         = z.infer<typeof sendLoginOtpSchema>;
-export type VerifyLoginOtpSchema       = z.infer<typeof verifyLoginOtpSchema>;
+export type SendLoginOtpSchema            = z.infer<typeof sendLoginOtpSchema>;
+export type VerifyLoginOtpSchema         = z.infer<typeof verifyLoginOtpSchema>;
+export type SendEmailLoginOtpSchema      = z.infer<typeof sendEmailLoginOtpSchema>;
+export type VerifyEmailLoginOtpSchema    = z.infer<typeof verifyEmailLoginOtpSchema>;

@@ -8,6 +8,7 @@ import {
   updateAdminStatusSchema,
   listSchoolsQuerySchema,
   listAllAdminsQuerySchema,
+  listSchoolUsersQuerySchema,
 } from './superAdmin.validation';
 import { sendSuccess } from '../../shared/utils/apiResponse';
 
@@ -142,6 +143,21 @@ export const listAllAdminsHandler = async (
   try {
     const query  = listAllAdminsQuerySchema.parse(req.query);
     const result = await superAdminService.listAllAdmins(query);
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /super-admin/schools/:schoolId/users?type= ───────────────────
+export const listSchoolUsersHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const query  = listSchoolUsersQuerySchema.parse(req.query);
+    const result = await superAdminService.listSchoolUsers(req.params.schoolId, query);
     sendSuccess(res, result);
   } catch (err) {
     next(err);

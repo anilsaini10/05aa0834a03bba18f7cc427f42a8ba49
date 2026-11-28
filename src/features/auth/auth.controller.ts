@@ -4,6 +4,7 @@ import {
   signupSchema, loginSchema, refreshSchema, logoutSchema, resetPasswordSchema, updateUsernameSchema,
   forgotPasswordSchema, resetPasswordConfirmSchema,
   sendLoginOtpSchema, verifyLoginOtpSchema,
+  sendEmailLoginOtpSchema, verifyEmailLoginOtpSchema,
 } from './auth.validation';
 import { sendSuccess, sendError } from '../../shared/utils/apiResponse';
 
@@ -64,6 +65,39 @@ export const verifyLoginOtpHandler = async (
   try {
     const input             = verifyLoginOtpSchema.parse(req.body);
     const { user, tokens }  = await authService.verifyLoginOtp(input);
+    sendSuccess(res, { user, tokens });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/login/email-otp/send ───────────────────────────
+export const sendEmailLoginOtpHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input  = sendEmailLoginOtpSchema.parse(req.body);
+    const result = await authService.sendEmailLoginOtp(input);
+    sendSuccess(res, {
+      message: 'OTP sent successfully.',
+      ...result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/login/email-otp/verify ─────────────────────────
+export const verifyEmailLoginOtpHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const input             = verifyEmailLoginOtpSchema.parse(req.body);
+    const { user, tokens }  = await authService.verifyEmailLoginOtp(input);
     sendSuccess(res, { user, tokens });
   } catch (err) {
     next(err);
